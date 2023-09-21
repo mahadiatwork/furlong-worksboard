@@ -1,0 +1,27 @@
+body {
+	font-family: 'Work Sans';
+	overflow-y: hidden;
+}
+.project-list-container {
+	border: 1px solid lightgrey !important;
+	border-radius: 15px !important;
+}
+
+.painter-box-title {
+	padding: 10px !important;
+	background-color: #f7fcfe;
+	font-weight: bold !important;
+	font-size: 20px !important;
+}
+
+.main-container-card {
+	padding: 20px !important;
+	border-radius: 10px !important;
+	box-shadow: -1px 0px 11px -2px rgba(133, 133, 133, 0.89);
+	-webkit-box-shadow: -1px 0px 11px -2px rgba(133, 133, 133, 0.89);
+	-moz-box-shadow: -1px 0px 11px -2px rgba(133, 133, 133, 0.89);
+}
+#customized-hook-demo {
+	width: 80% !important;
+}
+
