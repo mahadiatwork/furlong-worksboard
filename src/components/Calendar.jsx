@@ -8,12 +8,43 @@ import {
   toast,
   Popup,
 } from "@mobiscroll/react";
-import { EventNote } from "@mui/icons-material";
-import { Box, Button, Grid, Tooltip, Typography } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Button,
+  Grid,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import moment from "moment";
 import CloseIcon from "@mui/icons-material/Close";
 
 const ZOHO = window.ZOHO;
+
+// Create a TaskAccordion component
+function TaskAccordion({ tasks, title }) {
+  return (
+    tasks.length > 0 && (
+      <Accordion>
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          aria-controls="panel1a-content"
+          id="panel1a-header"
+        >
+          <Typography>{title}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          {tasks.map((task, i) => (
+            <Task key={i} data={task} />
+          ))}
+        </AccordionDetails>
+      </Accordion>
+    )
+  );
+}
 
 function Calendar({ contractors, events, projects, inProgress }) {
   const view = React.useMemo(() => {
@@ -100,65 +131,111 @@ function Calendar({ contractors, events, projects, inProgress }) {
 
   const activeProjects = [];
 
+  const as_soon_as_possible = [];
+  const urgent = [];
+  const term_1_holiday = [];
+  const term_2_holiday = [];
+  const term_3_holiday = [];
+  const term_4_holiday = [];
+  const specific_dates_provided = [];
+  const weekend_works = [];
+
   if (projects.length > 0) {
     projects.forEach((project) => {
-      tasks.push({
+      let task = {
         title: project.Account_name,
-        color:
-          project.Project_Timing === "Urgent"
-            ? "#eb4d4d"
-            : project.Project_Timing === "As soon as possible"
-            ? "#90A9FD"
-            : project.Project_Timing === "Term 1 School holidays"
-            ? "#C4F0B3"
-            : project.Project_Timing === "Term 2 School holidays"
-            ? "#98D681"
-            : project.Project_Timing === "Term 3 School holidays"
-            ? "#67C480"
-            : project.Project_Timing === "Term 4 School holidays"
-            ? "#8A37BE"
-            : project.Project_Timing === "Specific dates provided"
-            ? "#ACACAC"
-            : project.Project_Timing === "Weekend works"
-            ? "#FFDA62"
-            : "salmon",
+        color: "gray",
+        // color:
+        //   project.Project_Timing === "Urgent"
+        //     ? "#eb4d4d"
+        //     : project.Project_Timing === "As soon as possible"
+        //     ? "#90A9FD"
+        //     : project.Project_Timing === "Term 1 School holidays"
+        //     ? "#C4F0B3"
+        //     : project.Project_Timing === "Term 2 School holidays"
+        //     ? "#98D681"
+        //     : project.Project_Timing === "Term 3 School holidays"
+        //     ? "#67C480"
+        //     : project.Project_Timing === "Term 4 School holidays"
+        //     ? "#8A37BE"
+        //     : project.Project_Timing === "Specific dates provided"
+        //     ? "#ACACAC"
+        //     : project.Project_Timing === "Weekend works"
+        //     ? "#FFDA62"
+        //     : "salmon",
         project_id: project.id,
         work_summary: project.Work_Summary_Sale,
         estimated_time_budget: project.Budget_time_Add_Remove,
-      });
+        Project_Timing: project.Project_Timing,
+      };
+      if (project.Project_Timing === "Urgent") {
+        urgent.push(task);
+      }
+      if (project.Project_Timing === "As soon as possible") {
+        as_soon_as_possible.push(task);
+      }
+      if (project.Project_Timing === "Term 1 School holidays") {
+        term_1_holiday.push(task);
+      }
+      if (project.Project_Timing === "Term 2 School holidays") {
+        term_2_holiday.push(task);
+      }
+      if (project.Project_Timing === "Term 3 School holidays") {
+        term_3_holiday.push(task);
+      }
+      if (project.Project_Timing === "Term 4 School holidays") {
+        term_4_holiday.push(task);
+      }
+      if (project.Project_Timing === "Specific dates provided") {
+        specific_dates_provided.push(task);
+      }
+      if (project.Project_Timing === "Weekend works") {
+        weekend_works.push(task);
+      }
     });
   }
+
+  const taskTypes = [
+    { tasks: urgent, title: "Urgent" },
+    { tasks: as_soon_as_possible, title: "As soon as possible" },
+    { tasks: term_1_holiday, title: "Term 1 Holiday" },
+    { tasks: term_2_holiday, title: "Term 2 Holiday" },
+    { tasks: term_3_holiday, title: "Term 3 Holiday" },
+    { tasks: term_4_holiday, title: "Term 4 Holiday" },
+    { tasks: specific_dates_provided, title: "Specific Dates Provided" },
+    { tasks: weekend_works, title: "Weekend Works" },
+  ];
 
   if (inProgress.length > 0) {
     inProgress.forEach((project) => {
       activeProjects.push({
         title: project.Account_name,
-        color:
-          project.Project_Timing === "Urgent"
-            ? "#eb4d4d"
-            : project.Project_Timing === "As soon as possible"
-            ? "#90A9FD"
-            : project.Project_Timing === "Term 1 School holidays"
-            ? "#C4F0B3"
-            : project.Project_Timing === "Term 2 School holidays"
-            ? "#98D681"
-            : project.Project_Timing === "Term 3 School holidays"
-            ? "#67C480"
-            : project.Project_Timing === "Term 4 School holidays"
-            ? "#8A37BE"
-            : project.Project_Timing === "Specific dates provided"
-            ? "#ACACAC"
-            : project.Project_Timing === "Weekend works"
-            ? "#FFDA62"
-            : "salmon",
+        color: "#C4F0B3",
+        // color:
+        //   project.Project_Timing === "Urgent"
+        //     ? "#eb4d4d"
+        //     : project.Project_Timing === "As soon as possible"
+        //     ? "#90A9FD"
+        //     : project.Project_Timing === "Term 1 School holidays"
+        //     ? "#C4F0B3"
+        //     : project.Project_Timing === "Term 2 School holidays"
+        //     ? "#98D681"
+        //     : project.Project_Timing === "Term 3 School holidays"
+        //     ? "#67C480"
+        //     : project.Project_Timing === "Term 4 School holidays"
+        //     ? "#8A37BE"
+        //     : project.Project_Timing === "Specific dates provided"
+        //     ? "#ACACAC"
+        //     : project.Project_Timing === "Weekend works"
+        //     ? "#FFDA62"
+        //     : "salmon",
         project_id: project.id,
         work_summary: project.Work_Summary_Sale,
         estimated_time_budget: project.Budget_time_Add_Remove,
+        Project_Timing: project.Project_Timing,
       });
     });
   }
-
-  console.log({ activeProjects });
 
   const onEventUpdated = React.useCallback((args) => {
     // here you can update the event in your storage as well, after drag & drop or resize
@@ -289,9 +366,9 @@ function Calendar({ contractors, events, projects, inProgress }) {
   }, []);
 
   return (
-    <Box sx={{ height: "100vh",overflowY: "hidden" }}>
+    <Box sx={{ height: "100vh", overflowY: "hidden", bgcolor: "#f8f8f8" }}>
       <Grid container>
-        <Grid xs={9} sx={{padding: "10px"}}>
+        <Grid xs={9} sx={{ padding: "10px" }}>
           <Eventcalendar
             themeVariant="light"
             view={view}
@@ -311,15 +388,25 @@ function Calendar({ contractors, events, projects, inProgress }) {
             // onEventHoverOut={onEventHoverOut}
           />
         </Grid>
-        <Grid xs={3} sx={{ height: "100vh", overflowY: "scroll" }}>
-          <Typography sx={{ margin: "10px 0px" }} align="center" variant="h5">
-            Available Projects
-          </Typography>
-          <div>
-            {tasks.map((task, i) => (
-              <Task key={i} data={task} />
+        <Grid
+          xs={3}
+          sx={{
+            height: "100vh",
+            overflowY: "scroll",
+          }}
+        >
+          <Box sx={{padding: "10px 0px"}}>
+            <Typography variant="h5" align="center" sx={{padding:"20px 0px"}}>
+              Available Projects
+            </Typography>
+            {taskTypes.map((taskType, index) => (
+              <TaskAccordion
+                key={index}
+                tasks={taskType.tasks}
+                title={taskType.title}
+              />
             ))}
-          </div>
+          </Box>
           <div>
             <Typography sx={{ margin: "10px 0px" }} align="center" variant="h5">
               In Progress
