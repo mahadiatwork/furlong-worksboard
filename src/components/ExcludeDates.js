@@ -4,10 +4,10 @@ import CloseIcon from '@mui/icons-material/Close';
 import { styled } from '@mui/material';
 import PropTypes from 'prop-types';
 import * as React from 'react';
-import '../../App.css';
+// import '../../App.css';
 
 const Root = styled('div')(
-	({ theme }) => `
+  ({ theme }) => `
   color: ${theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,.85)'};
   font-size: 14px;
   margin-top: '5px';
@@ -21,7 +21,7 @@ const Label = styled('label')`
 `;
 
 const InputWrapper = styled('div')(
-	({ theme }) => `
+  ({ theme }) => `
   width: 80%;
   border: 1px solid ${theme.palette.mode === 'dark' ? '#434343' : '#d9d9d9'};
   background-color: ${theme.palette.mode === 'dark' ? '#141414' : '#fff'};
@@ -56,22 +56,22 @@ const InputWrapper = styled('div')(
 );
 
 function Tag(props) {
-	const { label, onDelete, ...other } = props;
-	return (
-		<div {...other}>
-			<span>{label}</span>
-			<CloseIcon onClick={onDelete} />
-		</div>
-	);
+  const { label, onDelete, ...other } = props;
+  return (
+    <div {...other}>
+      <span>{label}</span>
+      <CloseIcon onClick={onDelete} />
+    </div>
+  );
 }
 
 Tag.propTypes = {
-	label: PropTypes.string.isRequired,
-	onDelete: PropTypes.func.isRequired,
+  label: PropTypes.string.isRequired,
+  onDelete: PropTypes.func.isRequired,
 };
 
 const StyledTag = styled(Tag)(
-	({ theme }) => `
+  ({ theme }) => `
   display: flex;
   align-items: center;
   height: 24px;
@@ -105,7 +105,7 @@ const StyledTag = styled(Tag)(
 );
 
 const Listbox = styled('ul')(
-	({ theme }) => `
+  ({ theme }) => `
   width: 300px;
   margin: 2px 0 0;
   padding: 0;
@@ -152,46 +152,49 @@ const Listbox = styled('ul')(
 );
 
 export default function ExcludeDates({ days, setExcluded }) {
-	const {
-		getRootProps,
-		getInputLabelProps,
-		getInputProps,
-		getTagProps,
-		getListboxProps,
-		getOptionProps,
-		groupedOptions,
-		value,
-		focused,
-		setAnchorEl,
-	} = useAutocomplete({
-		id: 'customized-hook-demo',
-		multiple: true,
-		options: days,
-		getOptionLabel: (option) => option,
-	});
+  const {
+    getRootProps,
+    getInputLabelProps,
+    getInputProps,
+    getTagProps,
+    getListboxProps,
+    getOptionProps,
+    groupedOptions,
+    value,
+    focused,
+    setAnchorEl,
+  } = useAutocomplete({
+    id: 'customized-hook-demo',
+    multiple: true,
+    options: days,
+    getOptionLabel: (option) => option,
+  });
 
-	return (
-		<Root>
-			<div {...getRootProps()} style={{ display: 'flex' }}>
-				<label className="input-label">Excluded Dates</label>
-				<InputWrapper ref={setAnchorEl} className={focused ? 'focused' : ''}>
-					{value.map((option, index) => (
-						<StyledTag label={option} key={index} {...getTagProps({ index })} />
-					))}
-					{setExcluded(value)}
-					<input {...getInputProps()} />
-				</InputWrapper>
-			</div>
-			{groupedOptions.length > 0 ? (
-				<Listbox {...getListboxProps()}>
-					{groupedOptions.map((option, index) => (
-						<li {...getOptionProps({ option, index })} key={index}>
-							<span>{option}</span>
-							<CheckIcon fontSize="small" />
-						</li>
-					))}
-				</Listbox>
-			) : null}
-		</Root>
-	);
+
+  // console.log({days})
+
+  return (
+    <Root>
+      <div {...getRootProps()} style={{ display: 'flex' }}>
+        <label className="input-label">Excluded Dates</label>
+        <InputWrapper ref={setAnchorEl} className={focused ? 'focused' : ''}>
+          {value.map((option, index) => (
+            <StyledTag label={option} key={index} {...getTagProps({ index })} />
+          ))}
+          {setExcluded(value)}
+          <input {...getInputProps()} />
+        </InputWrapper>
+      </div>
+      {groupedOptions.length > 0 ? (
+        <Listbox {...getListboxProps()}>
+          {groupedOptions.map((option, index) => (
+            <li {...getOptionProps({ option, index })} key={index}>
+              <span>{option}</span>
+              <CheckIcon fontSize="small" />
+            </li>
+          ))}
+        </Listbox>
+      ) : null}
+    </Root>
+  );
 }

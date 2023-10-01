@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from "react";
 import "@mobiscroll/react/dist/css/mobiscroll.min.css";
-import {
-  Eventcalendar,
-  Draggable,
-  setOptions,
-  getJson,
-  toast,
-  Popup,
-} from "@mobiscroll/react";
+import { Eventcalendar, Draggable, toast, Popup } from "@mobiscroll/react";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
   Accordion,
@@ -15,12 +8,19 @@ import {
   AccordionSummary,
   Box,
   Button,
+  Card,
   Grid,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import moment from "moment";
 import CloseIcon from "@mui/icons-material/Close";
+import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
+import { AdapterMoment } from "@mui/x-date-pickers/AdapterMoment";
+import { handleDelete, handleUpdate, sortDates } from "./helpingFunctions";
+import dayjs from "dayjs";
+import ExcludeDates from "./ExcludeDates";
 
 const ZOHO = window.ZOHO;
 
@@ -47,6 +47,11 @@ function TaskAccordion({ tasks, title }) {
 }
 
 function Calendar({ contractors, events, projects, inProgress }) {
+  const [start__Date, setStartDate] = useState(null);
+  const [end__Date, setEndDate] = useState(null);
+  const [excluded, setExcluded] = useState(null);
+  const [eventSelected, setEventSelected] = useState(false);
+  // const [myEvents, setMyEvents] = useState([])
   const view = React.useMemo(() => {
     return {
       timeline: {
@@ -74,6 +79,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
   if (events.length > 0) {
     events.forEach((event) => {
       if (event.Projects !== null) {
+        // console.log(event.Projects.name, event.Start_Date, event.End_Date)
         myEvents.push({
           start: event.Start_Date,
           end: event.End_Date,
@@ -84,10 +90,79 @@ function Calendar({ contractors, events, projects, inProgress }) {
           project_id: event?.Projects?.id,
           Project_Summary: event.Project_Summary,
           estimated_time_budget: event.Current_Estimated_Time_Budget,
+          Excluded_Dates: event.Excluded_Dates,
         });
       }
     });
   }
+
+  let myEventsWithExclusions = [];
+
+  myEvents.forEach((event) => {
+    if (event.Excluded_Dates) {
+      const excludedDates = event.Excluded_Dates.split(",").map((dateStr) => {
+        return moment(dateStr, "YYYY-MM-DD").format("YYYY-MM-DD"); // Parse the excluded dates using the specified format
+      });
+
+      const sortedDates = sortDates(excludedDates);
+
+      console.log({ sortedDates });
+
+      let startDate = moment(event.start);
+      const endDate = moment(event.end);
+
+      // Initialize an array to store the dates
+      const datePairs = [];
+
+      let currentPair = null;
+
+      for (
+        let date = startDate.clone();
+        date.isSameOrBefore(endDate);
+        date.add(1, "days")
+      ) {
+        const formattedDate = date.format("YYYY-MM-DD");
+
+        if (excludedDates.includes(formattedDate)) {
+          if (currentPair) {
+            datePairs.push(currentPair);
+            currentPair = null;
+          }
+        } else {
+          if (!currentPair) {
+            currentPair = {
+              start: formattedDate,
+              end: event.end,
+              title: event.title,
+              resource: event?.resource,
+              event_id: event?.event_id,
+              color: event.color,
+              project_id: event?.project_id,
+              Project_Summary: event.Project_Summary,
+              estimated_time_budget: event.estimated_time_budget,
+              Excluded_Dates: event.Excluded_Dates,
+            };
+          } else {
+            currentPair.end = formattedDate;
+          }
+        }
+      }
+
+      if (currentPair) {
+        datePairs.push(currentPair);
+      }
+
+      // Remove empty objects
+      const filteredDatePairs = datePairs.filter((pair) => pair !== null);
+
+      myEventsWithExclusions = [
+        ...myEventsWithExclusions,
+        ...filteredDatePairs,
+      ];
+    } else {
+      myEventsWithExclusions.push(event);
+    }
+  });
 
   const onEventCreate = React.useCallback(async (event) => {
     const recordData = {
@@ -140,57 +215,34 @@ function Calendar({ contractors, events, projects, inProgress }) {
   const specific_dates_provided = [];
   const weekend_works = [];
 
+  function createTask(project, color) {
+    return {
+      title: project.Account_name,
+      color,
+      project_id: project.id,
+      work_summary: project.Work_Summary_Sale,
+      estimated_time_budget: project.Budget_time_Add_Remove,
+      Project_Timing: project.Project_Timing,
+    };
+  }
+
+  const timingToTasksMap = {
+    Urgent: urgent,
+    "As soon as possible": as_soon_as_possible,
+    "Term 1 School holidays": term_1_holiday,
+    "Term 2 School holidays": term_2_holiday,
+    "Term 3 School holidays": term_3_holiday,
+    "Term 4 School holidays": term_4_holiday,
+    "Specific dates provided": specific_dates_provided,
+    "Weekend works": weekend_works,
+  };
+
   if (projects.length > 0) {
     projects.forEach((project) => {
-      let task = {
-        title: project.Account_name,
-        color: "gray",
-        // color:
-        //   project.Project_Timing === "Urgent"
-        //     ? "#eb4d4d"
-        //     : project.Project_Timing === "As soon as possible"
-        //     ? "#90A9FD"
-        //     : project.Project_Timing === "Term 1 School holidays"
-        //     ? "#C4F0B3"
-        //     : project.Project_Timing === "Term 2 School holidays"
-        //     ? "#98D681"
-        //     : project.Project_Timing === "Term 3 School holidays"
-        //     ? "#67C480"
-        //     : project.Project_Timing === "Term 4 School holidays"
-        //     ? "#8A37BE"
-        //     : project.Project_Timing === "Specific dates provided"
-        //     ? "#ACACAC"
-        //     : project.Project_Timing === "Weekend works"
-        //     ? "#FFDA62"
-        //     : "salmon",
-        project_id: project.id,
-        work_summary: project.Work_Summary_Sale,
-        estimated_time_budget: project.Budget_time_Add_Remove,
-        Project_Timing: project.Project_Timing,
-      };
-      if (project.Project_Timing === "Urgent") {
-        urgent.push(task);
-      }
-      if (project.Project_Timing === "As soon as possible") {
-        as_soon_as_possible.push(task);
-      }
-      if (project.Project_Timing === "Term 1 School holidays") {
-        term_1_holiday.push(task);
-      }
-      if (project.Project_Timing === "Term 2 School holidays") {
-        term_2_holiday.push(task);
-      }
-      if (project.Project_Timing === "Term 3 School holidays") {
-        term_3_holiday.push(task);
-      }
-      if (project.Project_Timing === "Term 4 School holidays") {
-        term_4_holiday.push(task);
-      }
-      if (project.Project_Timing === "Specific dates provided") {
-        specific_dates_provided.push(task);
-      }
-      if (project.Project_Timing === "Weekend works") {
-        weekend_works.push(task);
+      const projectTiming = project.Project_Timing;
+      if (timingToTasksMap.hasOwnProperty(projectTiming)) {
+        const task = createTask(project, "gray");
+        timingToTasksMap[projectTiming].push(task);
       }
     });
   }
@@ -208,41 +260,13 @@ function Calendar({ contractors, events, projects, inProgress }) {
 
   if (inProgress.length > 0) {
     inProgress.forEach((project) => {
-      activeProjects.push({
-        title: project.Account_name,
-        color: "#C4F0B3",
-        // color:
-        //   project.Project_Timing === "Urgent"
-        //     ? "#eb4d4d"
-        //     : project.Project_Timing === "As soon as possible"
-        //     ? "#90A9FD"
-        //     : project.Project_Timing === "Term 1 School holidays"
-        //     ? "#C4F0B3"
-        //     : project.Project_Timing === "Term 2 School holidays"
-        //     ? "#98D681"
-        //     : project.Project_Timing === "Term 3 School holidays"
-        //     ? "#67C480"
-        //     : project.Project_Timing === "Term 4 School holidays"
-        //     ? "#8A37BE"
-        //     : project.Project_Timing === "Specific dates provided"
-        //     ? "#ACACAC"
-        //     : project.Project_Timing === "Weekend works"
-        //     ? "#FFDA62"
-        //     : "salmon",
-        project_id: project.id,
-        work_summary: project.Work_Summary_Sale,
-        estimated_time_budget: project.Budget_time_Add_Remove,
-        Project_Timing: project.Project_Timing,
-      });
+      activeProjects.push(createTask(project, "#C4F0B3"));
     });
   }
 
-  const onEventUpdated = React.useCallback((args) => {
+  const onEventUpdated = React.useCallback(async (args) => {
     // here you can update the event in your storage as well, after drag & drop or resize
     const changedEvent = args.event;
-
-    console.log({ changedEvent });
-
     var config = {
       Entity: "Job_Allocations",
       APIData: {
@@ -294,8 +318,6 @@ function Calendar({ contractors, events, projects, inProgress }) {
     "Parimal Patel",
   ];
 
-  console.log({ myResources });
-
   // define the custom sorting function
 
   const sortedArray = desiredOrder.map((name) =>
@@ -308,44 +330,41 @@ function Calendar({ contractors, events, projects, inProgress }) {
 
   const sortedResources = [...sortedArray, ...unsortedArray];
 
-  // useEffect(() => {
-  //   sortedResources.map((item) => {
-  //     item["eventCreation"] = false;
-  //   })
-  // },[])
-
   const [isOpen, setOpen] = React.useState(false);
   const [anchor, setAnchor] = React.useState(null);
-  const [currentEvent, setCurrentEvent] = React.useState(null);
-  const [info, setInfo] = React.useState("");
-  const [time, setTime] = React.useState("");
-  const [status, setStatus] = React.useState("");
-  const [reason, setReason] = React.useState("");
-  const [location, setLocation] = React.useState("");
-  const [buttonText, setButtonText] = React.useState("");
-  const [buttonType, setButtonType] = React.useState("");
-  const [bgColor, setBgColor] = React.useState("");
   const timerRef = React.useRef(null);
-  const [isToastOpen, setToastOpen] = React.useState(false);
-  const [toastText, setToastText] = React.useState();
   const [popupdata, setPopupData] = React.useState(null);
 
-  const onEventHoverIn = React.useCallback((args) => {
-    const event = args.event;
+  const onEventHoverIn = React.useCallback(
+    (args) => {
+      setEventSelected(true);
+      let tempEvent = args.event;
 
-    // const result = projects.find((project) => event.project_id === project.id);
-    setPopupData({
-      summary: event.Project_Summary,
-      title: event.title.split("-")[1],
-      popupColor: event.color,
-    });
+      console.log({ tempEvent: tempEvent, myEvents: myEvents, events: events });
 
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    setAnchor(args.domEvent.target);
-    setOpen(true);
-  }, []);
+      const foundevent = myEvents.filter(
+        (event) => event.event_id === tempEvent.event_id
+      )[0];
+
+      console.log({ foundevent });
+
+      if (foundevent !== undefined) {
+        // const result = activeProjects.find(
+        //   (project) => foundevent.project_id === project.project_id);
+        console.log("un");
+        setStartDate(moment(foundevent?.start));
+        setEndDate(moment(foundevent?.end));
+        setPopupData(foundevent);
+      }
+
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      setAnchor(args.domEvent.target);
+      setOpen(true);
+    },
+    [myEvents]
+  );
 
   const onEventHoverOut = React.useCallback(() => {
     timerRef.current = setTimeout(() => {
@@ -365,6 +384,28 @@ function Calendar({ contractors, events, projects, inProgress }) {
     }, 200);
   }, []);
 
+  //Excluded days looping
+  let days = [];
+
+  function dateRange(startDate, endDate, steps = 1) {
+    const dateArray = [];
+    const start = moment(startDate);
+    const end = moment(endDate);
+    const currentDate = start.clone();
+
+    // console.log(startDate, endDate);
+
+    while (currentDate.isSameOrBefore(end)) {
+      dateArray.push(currentDate.format("YYYY-MM-DD"));
+      currentDate.add(1, "days");
+    }
+    return dateArray;
+  }
+
+  start__Date !== null &&
+    end__Date !== null &&
+    (days = dateRange(start__Date, end__Date));
+
   return (
     <Box sx={{ height: "100vh", overflowY: "hidden", bgcolor: "#f8f8f8" }}>
       <Grid container>
@@ -372,13 +413,14 @@ function Calendar({ contractors, events, projects, inProgress }) {
           <Eventcalendar
             themeVariant="light"
             view={view}
-            // invalid={myInvalids}
-            data={myEvents}
+            invalid={myInvalids}
+            data={myEventsWithExclusions}
             resources={myResources}
-            dragToMove={true}
+            // dragToMove={true}
             externalDrop={true}
+            eventOverlap={false}
             onEventCreate={onEventCreate}
-            dragToResize={true}
+            // dragToResize={true}
             onEventUpdated={onEventUpdated}
             clickToCreate={false}
             dragToCreate={false}
@@ -395,31 +437,116 @@ function Calendar({ contractors, events, projects, inProgress }) {
             overflowY: "scroll",
           }}
         >
-          <Box sx={{padding: "10px 0px"}}>
-            <Typography variant="h5" align="center" sx={{padding:"20px 0px"}}>
-              Available Projects
-            </Typography>
-            {taskTypes.map((taskType, index) => (
-              <TaskAccordion
-                key={index}
-                tasks={taskType.tasks}
-                title={taskType.title}
-              />
-            ))}
-          </Box>
-          <div>
-            <Typography sx={{ margin: "10px 0px" }} align="center" variant="h5">
-              In Progress
-            </Typography>
-            <div>
-              {activeProjects.map((task, i) => (
-                <Task key={i} data={task} />
+          {eventSelected && (
+            <Box sx={{ padding: "10px" }}>
+              <Box sx={{ display: "flex", justifyContent: "space-around" }}>
+                <Typography
+                  variant="h5"
+                  align="center"
+                  sx={{ padding: "20px 0px", fontWeight: "bold" }}
+                >
+                  Update Allocated Project
+                </Typography>
+                <Button onClick={() => setEventSelected(false)}> Cancel</Button>
+              </Box>
+              <Box sx={{ display: "flex" }}>
+                <p className="input-label">Event Name: </p>
+                <p>{popupdata.title}</p>
+              </Box>
+              <Box sx={{ display: "flex" }}>
+                <label className="input-label">Start Date</label>
+                <LocalizationProvider dateAdapter={AdapterMoment}>
+                  <DatePicker
+                    label="Select Start Date"
+                    value={start__Date}
+                    onChange={(newValue) => {
+                      setStartDate(newValue);
+                    }}
+                    renderInput={(params) => <TextField {...params} />}
+                  />
+                </LocalizationProvider>
+              </Box>
+              <br />
+              <Box sx={{ display: "flex" }}>
+                <label className="input-label">End Date</label>
+                <LocalizationProvider dateAdapter={AdapterMoment}>
+                  <DatePicker
+                    label="Select End Date"
+                    value={end__Date}
+                    onChange={(newValue) => {
+                      setEndDate(newValue);
+                    }}
+                    renderInput={(params) => <TextField {...params} />}
+                  />
+                </LocalizationProvider>
+              </Box>
+              <br />
+              <br />
+              <ExcludeDates days={days} setExcluded={setExcluded} />
+              <br />
+              <br />
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Button
+                  variant="contained"
+                  onClick={() =>
+                    handleUpdate(
+                      start__Date,
+                      end__Date,
+                      excluded,
+                      popupdata,
+                      ZOHO
+                    )
+                  }
+                >
+                  Update Allocation
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={() => handleDelete(popupdata, ZOHO)}
+                >
+                  Delete
+                </Button>
+              </Box>
+            </Box>
+          )}
+          {!eventSelected && (
+            <Box sx={{ padding: "10px 0px" }}>
+              <Typography
+                variant="h5"
+                align="center"
+                sx={{ padding: "20px 0px" }}
+              >
+                Available Projects
+              </Typography>
+              {taskTypes.map((taskType, index) => (
+                <TaskAccordion
+                  key={index}
+                  tasks={taskType.tasks}
+                  title={taskType.title}
+                />
               ))}
+            </Box>
+          )}
+          {!eventSelected && (
+            <div>
+              <Typography
+                sx={{ margin: "10px 0px" }}
+                align="center"
+                variant="h5"
+              >
+                In Progress
+              </Typography>
+              <div>
+                {activeProjects.map((task, i) => (
+                  <Task key={i} data={task} />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </Grid>
       </Grid>
-      <div style={{ display: "flex", height: "95vh" }}>
+      {/* <div style={{ display: "flex", height: "95vh" }}>
         <Popup
           // display="anchored"
           isOpen={isOpen}
@@ -428,18 +555,10 @@ function Calendar({ contractors, events, projects, inProgress }) {
           showOverlay={false}
           contentPadding={false}
           closeOnOverlayClick={false}
-          width={350}
+          width={600}
           cssClass="md-tooltip"
         >
-          <div
-            onMouseEnter={onMouseEnter}
-            onMouseLeave={onMouseLeave}
-            style={{
-              backgroundColor: `${
-                popupdata === null ? "#313949" : popupdata?.popupColor
-              }`,
-            }}
-          >
+          <Card onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
             <div className="md-tooltip-info">
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <CloseIcon
@@ -447,19 +566,41 @@ function Calendar({ contractors, events, projects, inProgress }) {
                   onClick={() => setOpen(false)}
                 />
               </div>
-              <div className="md-tooltip-title">
-                Project Name: {popupdata?.title}
-              </div>
-              <div className="md-tooltip-title">
-                Project Summary: {popupdata?.summary}
-              </div>
-              <div className="md-tooltip-title">
-                Current Estimated Time Budget: test {240}
-              </div>
+              <Box sx={{ display: "flex" }}>
+                <label className="input-label">Start Date</label>
+                <LocalizationProvider dateAdapter={AdapterMoment}>
+                  <DatePicker
+                    label="Select Start Date"
+                    value={start__Date}
+                    onChange={(newValue) => {
+                      setStartDate(newValue);
+                    }}
+                    renderInput={(params) => <TextField {...params} />}
+                  />
+                </LocalizationProvider>
+              </Box>
+              <br />
+              <Box sx={{ display: "flex" }}>
+                <label className="input-label">End Date</label>
+                <LocalizationProvider dateAdapter={AdapterMoment}>
+                  <DatePicker
+                    label="Select End Date"
+                    value={end__Date}
+                    onChange={(newValue) => {
+                      setEndDate(newValue);
+                    }}
+                    renderInput={(params) => <TextField {...params} />}
+                  />
+                </LocalizationProvider>
+              </Box>
+              <br />
+              <ExcludeDates days={days} setExcluded={setExcluded} />
+              <br />
+              <br />
             </div>
-          </div>
+          </Card>
         </Popup>
-      </div>
+      </div> */}
     </Box>
   );
 }
@@ -479,12 +620,6 @@ function Task(props) {
       style={{ background: props.data.color }}
       className="external-event-task"
     >
-      {/* <div className="container">
-        <Tooltip title={props.data.work_summary} arrow>
-          <div className="first-div"></div>
-        </Tooltip>
-        <div className="second-div"></div>
-      </div> */}
       <Tooltip title={`${props.data.work_summary}`} placement="left-start">
         <Button
           sx={{

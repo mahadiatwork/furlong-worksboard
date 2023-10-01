@@ -2,9 +2,6 @@ import { Box, Card, CircularProgress, Grid } from "@mui/material";
 import { useEffect, useState } from "react";
 import "./App.css";
 import Calendar from "./components/Calendar";
-import FurlongDemo3 from "./components/FurlongDemo/FurlongDemo3";
-import InputForm from "./components/InputForm/InputForm";
-import ProjectTable from "./components/ProjectTable/ProjectTable";
 const ZOHO = window.ZOHO;
 function App() {
   const [view, setView] = useState("month");
@@ -72,6 +69,7 @@ function App() {
         per_page: 100,
         page: 1,
       });
+
 
       let zohoEvents = [];
 
