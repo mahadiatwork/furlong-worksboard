@@ -59,7 +59,6 @@ function App() {
       });
 
       setInProgress(InProgressProjectData.data)
-      console.log({ InProgressProjectData });
 
       setPainters(painterData.data);
 
@@ -91,7 +90,7 @@ function App() {
     zohoConnect();
   }, []);
 
-  console.log({ events });
+  // console.log({ events });
 
   if (painters.length === 0) {
     return (
@@ -111,32 +110,7 @@ function App() {
 
   return (
     <Box sx={{ height: "100vh",overflowY: "hidden"}}>
-      {/* <Grid container>
-        <Grid item lg={7} md={12} xs={12}>
-          <Card sx={{ p: 3, height: "95vh" }}>
-            <Calendar contractors={painters} events={events} />
-          </Card>
-        </Grid>
-        <Grid item lg={5} md={12} xs={12}>
-          <Card sx={{ ml: 2, height: "95vh" }}>
-            <ProjectTable
-              projects={projects}
-              painters={painters}
-              setFormSubmitted={setFormSubmitted}
-              setReload={setReload}
-            />
-          </Card>
-        </Grid>
-      </Grid> */}
-
       <Calendar contractors={painters} events={events} projects={projects} inProgress={inProgress} />
-
-      {/* <ProjectTable
-              projects={projects}
-              painters={painters}
-              setFormSubmitted={setFormSubmitted}
-              setReload={setReload}
-            /> */}
     </Box>
   );
 }

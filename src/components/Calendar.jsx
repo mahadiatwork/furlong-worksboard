@@ -21,6 +21,7 @@ import { AdapterMoment } from "@mui/x-date-pickers/AdapterMoment";
 import { handleDelete, handleUpdate, sortDates } from "./helpingFunctions";
 import dayjs from "dayjs";
 import ExcludeDates from "./ExcludeDates";
+import DeleteDialog from "./DeleteDialog";
 
 const ZOHO = window.ZOHO;
 
@@ -81,7 +82,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
       if (event.Projects !== null) {
         myEvents.push({
           start: event.Start_Date,
-          end: event.End_Date,
+          end: moment(event.End_Date).format("YYYY-MM-DD"),
           title: event.Projects.name,
           resource: event?.Contractor?.id,
           event_id: event?.id,
@@ -105,7 +106,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 
       const sortedDates = sortDates(excludedDates);
 
-      console.log({ sortedDates });
+      // console.log({ sortedDates });
 
       let startDate = moment(event.start);
       const endDate = moment(event.end);
@@ -142,7 +143,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
               Excluded_Dates: event.Excluded_Dates,
             };
           } else {
-            currentPair.end = moment(formattedDate).add(1, "days");
+            currentPair.end = moment(formattedDate).add(1, "days").format("YYYY-MM-DD");
           }
         }
       }
@@ -159,9 +160,12 @@ function Calendar({ contractors, events, projects, inProgress }) {
         ...filteredDatePairs,
       ];
     } else {
+      event.end = moment(event.end).add(1, "days").format("YYYY-MM-DD"); 
       myEventsWithExclusions.push(event);
     }
   });
+
+  console.log({myEventsWithExclusions})
 
   const onEventCreate = React.useCallback(async (event) => {
     const recordData = {
@@ -347,15 +351,17 @@ function Calendar({ contractors, events, projects, inProgress }) {
         // const result = activeProjects.find(
         //   (project) => foundevent.project_id === project.project_id);
 
+        let excludedDate = [];
+
         if(foundevent.Excluded_Dates !== null){
           const excludedDates = foundevent.Excluded_Dates.split(",").map((dateStr) => {
             return moment(dateStr, "YYYY-MM-DD").format("YYYY-MM-DD"); // Parse the excluded dates using the specified format
           });
-
-         setExcluded(excludedDates)
+          excludedDate = excludedDates;
+         
         }
-
-  
+        console.log({excludedDate})
+        setExcluded(excludedDate)
         setStartDate(moment(foundevent?.start));
         setEndDate(moment(foundevent?.end));
         setPopupData(foundevent);
@@ -410,7 +416,20 @@ function Calendar({ contractors, events, projects, inProgress }) {
     end__Date !== null &&
     (days = dateRange(start__Date, end__Date));
 
-    console.log({myEventsWithExclusions})
+    // console.log({myEventsWithExclusions})
+
+    const [deleteDialog, setDeleteDialog] = React.useState(false);
+
+
+    const handleClickOpen = () => {
+      setDeleteDialog(true);
+    };
+  
+    const handleClose = (value) => {
+      setDeleteDialog(false);
+    };
+
+
 
   return (
     <Box sx={{ height: "100vh", overflowY: "hidden", bgcolor: "#f8f8f8" }}>
@@ -445,13 +464,13 @@ function Calendar({ contractors, events, projects, inProgress }) {
         >
           {eventSelected && (
             <Box sx={{ padding: "10px" }}>
-              <Box sx={{ display: "flex", justifyContent: "space-around" }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography
                   variant="h5"
                   align="center"
                   sx={{ padding: "20px 0px", fontWeight: "bold" }}
                 >
-                  Update Allocated Project
+                  Update Job Allocation
                 </Typography>
                 <Button onClick={() => setEventSelected(false)}> Cancel</Button>
               </Box>
@@ -488,7 +507,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
               </Box>
               <br />
               <br />
-              <ExcludeDates days={days} setExcluded={setExcluded} excluded={excluded} />
+               <ExcludeDates days={days} setExcluded={setExcluded} excluded={excluded} />
               <br />
               <br />
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
@@ -504,12 +523,12 @@ function Calendar({ contractors, events, projects, inProgress }) {
                     )
                   }
                 >
-                  Update Allocation
+                  Update
                 </Button>
                 <Button
                   variant="contained"
                   color="error"
-                  onClick={() => handleDelete(popupdata, ZOHO)}
+                  onClick={handleClickOpen}
                 >
                   Delete
                 </Button>
@@ -552,6 +571,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
           )}
         </Grid>
       </Grid>
+      <DeleteDialog deleteDialog={deleteDialog} handleClose={handleClose} deleteData={popupdata} ZOHO={ZOHO} />
       {/* <div style={{ display: "flex", height: "95vh" }}>
         <Popup
           // display="anchored"

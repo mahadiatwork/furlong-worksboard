@@ -151,7 +151,7 @@ const Listbox = styled('ul')(
 `
 );
 
-export default function ExcludeDates({ days, setExcluded,excluded }) {
+export default function ExcludeDates({ days, excluded, setExcluded }) {
   const {
     getRootProps,
     getInputLabelProps,
@@ -160,17 +160,19 @@ export default function ExcludeDates({ days, setExcluded,excluded }) {
     getListboxProps,
     getOptionProps,
     groupedOptions,
-    value,
+    value, // Use the provided value prop
     focused,
     setAnchorEl,
   } = useAutocomplete({
     id: 'customized-hook-demo',
-    defaultValue: excluded,
+    value: excluded, // Use the provided excluded prop as the value
     multiple: true,
     options: days,
     getOptionLabel: (option) => option,
+    onChange: (event, newValue) => {
+      setExcluded(newValue); // Update the excluded state when the value changes
+    },
   });
-
 
   return (
     <Root>
@@ -180,7 +182,6 @@ export default function ExcludeDates({ days, setExcluded,excluded }) {
           {value.map((option, index) => (
             <StyledTag label={option} key={index} {...getTagProps({ index })} />
           ))}
-          {setExcluded(value)}
           <input {...getInputProps()} />
         </InputWrapper>
       </div>
