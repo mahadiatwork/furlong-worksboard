@@ -49,7 +49,7 @@ function TaskAccordion({ tasks, title }) {
 function Calendar({ contractors, events, projects, inProgress }) {
   const [start__Date, setStartDate] = useState(null);
   const [end__Date, setEndDate] = useState(null);
-  const [excluded, setExcluded] = useState(null);
+  const [excluded, setExcluded] = useState([]);
   const [eventSelected, setEventSelected] = useState(false);
   // const [myEvents, setMyEvents] = useState([])
   const view = React.useMemo(() => {
@@ -79,7 +79,6 @@ function Calendar({ contractors, events, projects, inProgress }) {
   if (events.length > 0) {
     events.forEach((event) => {
       if (event.Projects !== null) {
-        // console.log(event.Projects.name, event.Start_Date, event.End_Date)
         myEvents.push({
           start: event.Start_Date,
           end: event.End_Date,
@@ -143,7 +142,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
               Excluded_Dates: event.Excluded_Dates,
             };
           } else {
-            currentPair.end = formattedDate;
+            currentPair.end = moment(formattedDate).add(1, "days");
           }
         }
       }
@@ -340,18 +339,23 @@ function Calendar({ contractors, events, projects, inProgress }) {
       setEventSelected(true);
       let tempEvent = args.event;
 
-      console.log({ tempEvent: tempEvent, myEvents: myEvents, events: events });
-
       const foundevent = myEvents.filter(
         (event) => event.event_id === tempEvent.event_id
       )[0];
 
-      console.log({ foundevent });
-
       if (foundevent !== undefined) {
         // const result = activeProjects.find(
         //   (project) => foundevent.project_id === project.project_id);
-        console.log("un");
+
+        if(foundevent.Excluded_Dates !== null){
+          const excludedDates = foundevent.Excluded_Dates.split(",").map((dateStr) => {
+            return moment(dateStr, "YYYY-MM-DD").format("YYYY-MM-DD"); // Parse the excluded dates using the specified format
+          });
+
+         setExcluded(excludedDates)
+        }
+
+  
         setStartDate(moment(foundevent?.start));
         setEndDate(moment(foundevent?.end));
         setPopupData(foundevent);
@@ -405,6 +409,8 @@ function Calendar({ contractors, events, projects, inProgress }) {
   start__Date !== null &&
     end__Date !== null &&
     (days = dateRange(start__Date, end__Date));
+
+    console.log({myEventsWithExclusions})
 
   return (
     <Box sx={{ height: "100vh", overflowY: "hidden", bgcolor: "#f8f8f8" }}>
@@ -482,7 +488,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
               </Box>
               <br />
               <br />
-              <ExcludeDates days={days} setExcluded={setExcluded} />
+              <ExcludeDates days={days} setExcluded={setExcluded} excluded={excluded} />
               <br />
               <br />
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>

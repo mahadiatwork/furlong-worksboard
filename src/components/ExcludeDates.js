@@ -151,7 +151,7 @@ const Listbox = styled('ul')(
 `
 );
 
-export default function ExcludeDates({ days, setExcluded }) {
+export default function ExcludeDates({ days, setExcluded,excluded }) {
   const {
     getRootProps,
     getInputLabelProps,
@@ -165,13 +165,12 @@ export default function ExcludeDates({ days, setExcluded }) {
     setAnchorEl,
   } = useAutocomplete({
     id: 'customized-hook-demo',
+    defaultValue: excluded,
     multiple: true,
     options: days,
     getOptionLabel: (option) => option,
   });
 
-
-  // console.log({days})
 
   return (
     <Root>
@@ -185,9 +184,9 @@ export default function ExcludeDates({ days, setExcluded }) {
           <input {...getInputProps()} />
         </InputWrapper>
       </div>
-      {groupedOptions.length > 0 ? (
+      {groupedOptions?.length > 0 ? (
         <Listbox {...getListboxProps()}>
-          {groupedOptions.map((option, index) => (
+          {groupedOptions?.map((option, index) => (
             <li {...getOptionProps({ option, index })} key={index}>
               <span>{option}</span>
               <CheckIcon fontSize="small" />
