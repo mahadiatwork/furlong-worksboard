@@ -1,7 +1,7 @@
 import { useAutocomplete } from '@mui/base/AutocompleteUnstyled';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
-import { styled } from '@mui/material';
+import { Paper, Table, TableBody, TableCell, TableContainer, TableRow, styled } from '@mui/material';
 import PropTypes from 'prop-types';
 import * as React from 'react';
 // import '../../App.css';
@@ -195,6 +195,23 @@ export default function ExcludeDates({ days, excluded, setExcluded }) {
           ))}
         </Listbox>
       ) : null}
+      {/* <TableContainer component={Paper} >
+      <Table sx={{width:'400px'}}>
+        <TableBody>
+          {groupedOptions.map((row, index) => (
+            <TableRow key={index}>
+              <TableCell>{row}</TableCell>
+              <TableCell>
+              <select  >
+                <option>Scheduled</option>
+                <option>Attended</option>
+              </select>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer> */}
     </Root>
   );
 }

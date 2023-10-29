@@ -30,8 +30,20 @@ function App() {
       const projectsResp = await ZOHO.CRM.API.coql(config).then(function (
         data
       ) {
-        console.log({ data });
-        setProjects(data.data);
+        const sortedData = data.data.sort((a, b) => {
+          const nameA = (a.Account_name || '').toUpperCase(); // Handle null values
+          const nameB = (b.Account_name || '').toUpperCase(); // Handle null values
+        
+          if (nameA < nameB) {
+            return -1;
+          } else if (nameA > nameB) {
+            return 1;
+          } else {
+            return 0;
+          }
+        });
+        console.log({ sortedData });
+        setProjects(sortedData);
       });
 
       // (project_allocation:equals:false)
@@ -59,6 +71,7 @@ function App() {
       });
 
       setInProgress(InProgressProjectData.data)
+      console.log({projects})
 
       setPainters(painterData.data);
 

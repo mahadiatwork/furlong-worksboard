@@ -9,7 +9,18 @@ import {
 	Box,
 	Button,
 	Card,
+	Dialog,
+	DialogActions,
+	DialogContent,
+	DialogTitle,
 	Grid,
+	Modal,
+	Paper,
+	Table,
+	TableBody,
+	TableCell,
+	TableContainer,
+	TableRow,
 	TextField,
 	Tooltip,
 	Typography,
@@ -46,12 +57,24 @@ function TaskAccordion({ tasks, title }) {
 		)
 	);
 }
+const style = {
+	position: "absolute",
+	top: "50%",
+	left: "50%",
+	transform: "translate(-50%, -50%)",
+	width: 400,
+	bgcolor: "background.paper",
+	border: "2px solid #000",
+	boxShadow: 24,
+	p: 4,
+};
 
 function Calendar({ contractors, events, projects, inProgress }) {
 	const [start__Date, setStartDate] = useState(null);
 	const [end__Date, setEndDate] = useState(null);
 	const [excluded, setExcluded] = useState([]);
 	const [eventSelected, setEventSelected] = useState(false);
+	const [accepted,setAccepted]= useState(false)
 	// const [myEvents, setMyEvents] = useState([])
 	const view = React.useMemo(() => {
 		return {
@@ -72,7 +95,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 			myResources.push({
 				id: contractor?.id,
 				name: contractor.First_Name + " " + contractor.Last_Name,
-				// test: "test"
+				color:accepted? '#C4F0B3':'blue'
 			});
 		});
 	}
@@ -172,7 +195,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 	const onEventCreate = React.useCallback(async (event) => {
 		const start_date = moment(event.event.start.toString());
 		const end_date = moment(event.event.end.toString());
-
+		console.log({ event });
 		const days_in_between = end_date.diff(start_date, "days");
 
 		const recordData = {
@@ -219,7 +242,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 				//   console.log(data);
 				// });
 
-				// window.location.reload(false);
+				window.location.reload(false);
 			} else {
 				toast({
 					message: "There is something wrong",
@@ -295,6 +318,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 	/* ------------------Fahims Task--------------- */
 
 	const onEventUpdated = React.useCallback(async (args) => {
+		// console.log('hello',args.event.resource)
 		// here you can update the event in your storage as well, after drag & drop or resize
 		const changedEvent = args.event;
 		const event_id = changedEvent.event_id;
@@ -318,134 +342,191 @@ function Calendar({ contractors, events, projects, inProgress }) {
 			},
 			Trigger: ["workflow"],
 		};
-		let project_Name=''
 
-		ZOHO.CRM.API.getRelatedRecords({
-			Entity: "Job_Allocations",
-			RecordID: event_id,
-			RelatedList: "Attendance_Log",
-			page: 1,
-			per_page: 200,
-		}).then(function (data) {
-			console.log({ RelatedRec: data.data });
-			if (data.data.length === 1) {
-				ZOHO.CRM.API.updateRecord(config).then(function (data) {
-					let ID = 0;
-					if (data.data[0].status === "success") {
-						toast({
-							message: "Project Allocation Updated Successfully",
-						});
+		if (
+			args.event.resource != args.oldEvent.resource ||
+			args.event.start != args.oldEvent.start
+		) {
+			var new_config = {
+				Entity: "Job_Allocations",
+				APIData: {
+					id: changedEvent.event_id,
+					Start_Date: moment(args.event.start.toString()).format("YYYY-MM-DD"),
+					End_Date: moment(args.event.end.toString()).format("YYYY-MM-DD"),
+					Contractor: { id: args.event.resource },
+				},
+				Trigger: ["workflow"],
+			};
 
-						const startDate = moment(changedEvent.start.toString());
-						const endDate = moment(changedEvent.end.toString());
-						console.log(startDate, endDate);
-						const daysBetween = endDate.diff(startDate, "days");
-						ID = data.data[0].details.id;
-						console.log({ daysBetween });
+			ZOHO.CRM.API.updateRecord(new_config).then(function (data) {
+				console.log("fahim", data.data[0]?.details?.id);
 
-						ZOHO.CRM.API.getRecord({
-							Entity: "Job_Allocations",
-							approved: "both",
-							RecordID: ID,
-						}).then(function (data) {
-							///creating attendence for everyday////
-							let currentDate = startDate.clone();
-							project_Name=  data.data[0].Project_Name
-							for (let i = 0; i < daysBetween - 1; i++) {
-								let attendenceData = {
-									Name: data.data[0].Project_Name,
-									Attendance_Confirmation: "Scheduled",
-									Attendance_Date: currentDate
-										.add(1, "days")
-										.format("YYYY-MM-DD"),
-									Scheduling: { id: ID },
-								};
-								ZOHO.CRM.API.insertRecord({
-									Entity: "Project_Attendance",
-									APIData: attendenceData,
-									Trigger: ["workflow"],
-								});
-							}
-						});
-					} else {
-						toast({
-							message: "There is something wrong",
-						});
-					}
-				});
-			}else if (data.data.length > 1 && data.data.length<diffDates ) {
-				const tempDateArr=[];
-				data.data.map((item)=>{
-					tempDateArr.push(item.Attendance_Date)	
-				})
-				const newDates = updatedDates.filter(
-					(item) => !tempDateArr.includes(item)
-				);
-				ZOHO.CRM.API.updateRecord(config).then(function (data) {
-					let ID = 0;
-					if (data.data[0].status === "success") {
-						toast({
-							message: "Project Allocation Updated Successfully",
-						});	
-						ID = data.data[0].details.id;
-						// console.log(data.data[0])
-						ZOHO.CRM.API.getRecord({
-							Entity: "Job_Allocations",
-							approved: "both",
-							RecordID: ID,
-						}).then(function (data) {
-							newDates.map((item)=>{
-								let attendenceData = {
-									Name: data.data[0].Project_Name,
-									Attendance_Confirmation: "Scheduled",
-									Attendance_Date: item,
-									Scheduling: { id: ID },
-								};
-								ZOHO.CRM.API.insertRecord({
-									Entity: "Project_Attendance",
-									APIData: attendenceData,
-									Trigger: ["workflow"],
-								}).then(d =>
-									console.log(d))
-							})
-						})
-						
-						
-					} else {
-						toast({
-							message: "There is something wrong",
-						});
-					}
-				});
-				
-			} else {
-				ZOHO.CRM.API.updateRecord(config).then(function (data) {
-					let ID = 0;
-					if (data.data[0].status === "success") {
-						toast({
-							message: "Project Allocation Updated Successfully",
-						});	
-					} else {
-						toast({
-							message: "There is something wrong",
-						});
-					}
-				});
-				const newDates = data.data.filter(
-					(item) => !updatedDates.includes(item.Attendance_Date)
-				);
-				newDates.map((item) => {
-					console.log(item.id);
+				const newRecId = data.data[0]?.details?.id;
+
+				ZOHO.CRM.API.getRelatedRecords({
+					Entity: "Job_Allocations",
+					RecordID: newRecId,
+					RelatedList: "Attendance_Log",
+					page: 1,
+					per_page: 200,
+				}).then(function (data) {
 					
-					ZOHO.CRM.API.deleteRecord({
-						Entity: "Project_Attendance",
-						RecordID: item.id,
-					}).then(function (data) {
-						console.log(data);
-					});
+					const tempArr = data.data;
+					const startDate = moment(changedEvent.start.toString());
+					const endDate = moment(changedEvent.end.toString());
+					// const daysBetween = endDate.diff(startDate, "days");
+
+					let currentDate = startDate.clone();
+					for (let i = 0; i < tempArr.length; i++) {
+						// var APIData = {
+						// 	Attendance_Date: currentDate.add(1, "days").format("YYYY-MM-DD"),
+						// };
+						var RelatedConfig = {
+							Entity: "Project_Attendance",
+							APIData: {
+								id: tempArr[i].id,
+								Attendance_Date: currentDate
+									.add(i, "days")
+									.format("YYYY-MM-DD"),
+							},
+							Trigger: ["workflow"],
+						};
+						ZOHO.CRM.API.updateRecord(RelatedConfig).then(function (data) {
+							console.log("tazwer", data);
+						});
+					}
 				});
-			}
-		});
+			});
+		} 
+			ZOHO.CRM.API.getRelatedRecords({
+				Entity: "Job_Allocations",
+				RecordID: event_id,
+				RelatedList: "Attendance_Log",
+				page: 1,
+				per_page: 200,
+			}).then(function (data) {
+				// console.log({ RelatedRec: data.data });
+				if (data.data.length === 1) {
+					ZOHO.CRM.API.updateRecord(config).then(function (data) {
+						
+						let ID = 0;
+						if (data.data[0].status === "success") {
+							toast({
+								message: "Project Allocation Updated Successfully",
+							});
+
+							const startDate = moment(changedEvent.start.toString());
+							const endDate = moment(changedEvent.end.toString());
+							// console.log(startDate, endDate);
+							const daysBetween = endDate.diff(startDate, "days");
+							ID = data.data[0].details.id;
+							// console.log({ daysBetween });
+
+							ZOHO.CRM.API.getRecord({
+								Entity: "Job_Allocations",
+								approved: "both",
+								RecordID: ID,
+							}).then(function (data) {
+								///creating attendence for everyday////
+								let currentDate = startDate.clone();
+								// project_Name=  data.data[0].Project_Name
+								for (let i = 0; i < daysBetween - 1; i++) {
+									let attendenceData = {
+										Name: data.data[0].Project_Name,
+										Attendance_Confirmation: "Scheduled",
+										Attendance_Date: currentDate
+											.add(1, "days")
+											.format("YYYY-MM-DD"),
+										Scheduling: { id: ID },
+									};
+									ZOHO.CRM.API.insertRecord({
+										Entity: "Project_Attendance",
+										APIData: attendenceData,
+										Trigger: ["workflow"],
+									});
+								}
+								window.location.reload(false);
+							});
+						} else {
+							toast({
+								message: "There is something wrong",
+							});
+						}
+					});
+				} else if (data.data.length > 1 && data.data.length < diffDates) {
+					const tempDateArr = [];
+					data.data.map((item) => {
+						tempDateArr.push(item.Attendance_Date);
+					});
+					const newDates = updatedDates.filter(
+						(item) => !tempDateArr.includes(item)
+					);
+					ZOHO.CRM.API.updateRecord(config).then(function (data) {
+						let ID = 0;
+						if (data.data[0].status === "success") {
+							toast({
+								message: "Project Allocation Updated Successfully",
+							});
+							ID = data.data[0].details.id;
+							// console.log(data.data[0])
+							ZOHO.CRM.API.getRecord({
+								Entity: "Job_Allocations",
+								approved: "both",
+								RecordID: ID,
+							}).then(function (data) {
+								newDates.map((item) => {
+									let attendenceData = {
+										Name: data.data[0].Project_Name,
+										Attendance_Confirmation: "Scheduled",
+										Attendance_Date: item,
+										Scheduling: { id: ID },
+									};
+									ZOHO.CRM.API.insertRecord({
+										Entity: "Project_Attendance",
+										APIData: attendenceData,
+										Trigger: ["workflow"],
+									})
+										.then
+										// console.log(d)
+										();
+								});
+							});
+						} else {
+							toast({
+								message: "There is something wrong",
+							});
+						}
+					});
+				} else {
+					ZOHO.CRM.API.updateRecord(config).then(function (data) {
+						// let ID = 0;
+						if (data.data[0].status === "success") {
+							toast({
+								message: "Project Allocation Updated Successfully",
+							});
+						} else {
+							toast({
+								message: "There is something wrong",
+							});
+						}
+					});
+					const newDates = data.data.filter(
+						(item) => !updatedDates.includes(item.Attendance_Date)
+					);
+					newDates.map((item) => {
+						// console.log(item.id);
+
+						ZOHO.CRM.API.deleteRecord({
+							Entity: "Project_Attendance",
+							RecordID: item.id,
+						}).then(function (data) {
+							// console.log(data);
+						});
+					});
+				}
+			});
+		
+
 		// await ZOHO.CRM.API.updateRecord(config).then(function (data) {
 		// 	let ID =0;
 		// 	if (data.data[0].status === "success") {
@@ -499,7 +580,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 			{
 				recurring: {
 					repeat: "weekly",
-					weekDays: "SA,SU",
+					// weekDays: "SA,SU",
 				},
 			},
 		];
@@ -594,6 +675,49 @@ function Calendar({ contractors, events, projects, inProgress }) {
 		}, 200);
 	}, []);
 
+	const handleAccept = (even_data, ZOHO) => {
+		const id = even_data.event_id;
+		ZOHO.CRM.API.getRelatedRecords({
+			Entity: "Job_Allocations",
+			RecordID: id,
+			RelatedList: "Attendance_Log",
+			page: 1,
+			per_page: 200,
+		}).then(function (data) {
+			
+			data.data.map((item) => {
+				var config={
+					Entity:"Project_Attendance",
+					APIData:{
+						  "id": item.id,
+						  "Attendance_Confirmation": "Attended",
+					},
+					Trigger:["workflow"]
+				  }
+				  ZOHO.CRM.API.updateRecord(config)
+				  .then(function(data){
+					  console.log(data)
+					  var config={
+						Entity:"Job_Allocations",
+						APIData:{
+							  "id": id,
+							  "Color_Code": "#C4F0B3",
+							  
+						},
+						Trigger:["workflow"]
+					  }
+					  ZOHO.CRM.API.updateRecord(config)
+					  .then(function(data){
+						  console.log(data)
+						  setEventSelected(false)
+						  window.location.reload(false);
+					  })
+					  
+				  })
+			});
+		});
+		
+	};
 	//Excluded days looping
 	let days = [];
 
@@ -625,6 +749,8 @@ function Calendar({ contractors, events, projects, inProgress }) {
 	const handleClose = (value) => {
 		setDeleteDialog(false);
 	};
+
+	console.log({ days });
 
 	return (
 		<Box sx={{ height: "100vh", overflowY: "hidden", bgcolor: "#f8f8f8" }}>
@@ -664,7 +790,7 @@ function Calendar({ contractors, events, projects, inProgress }) {
 						overflowY: "scroll",
 					}}
 				>
-					{eventSelected && (
+					{/* {eventSelected && (
 						<Box sx={{ padding: "10px" }}>
 							<Box sx={{ display: "flex", justifyContent: "space-between" }}>
 								<Typography
@@ -709,11 +835,24 @@ function Calendar({ contractors, events, projects, inProgress }) {
 							</Box>
 							<br />
 							<br />
-							<ExcludeDates
-								days={days}
-								setExcluded={setExcluded}
-								excluded={excluded}
-							/>
+
+							<TableContainer component={Paper}>
+								<Table sx={{ width: "400px" }}>
+									<TableBody>
+										{days[0].map((row, index) => (
+											<TableRow key={index}>
+												<TableCell>{row}</TableCell>
+												<TableCell>
+													<select>
+														<option>Scheduled</option>
+														<option>Attended</option>
+													</select>
+												</TableCell>
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
+							</TableContainer>
 							<br />
 							<br />
 							<Box sx={{ display: "flex", justifyContent: "space-between" }}>
@@ -740,7 +879,8 @@ function Calendar({ contractors, events, projects, inProgress }) {
 								</Button>
 							</Box>
 						</Box>
-					)}
+					)} */}
+
 					{!eventSelected && (
 						<Box sx={{ padding: "10px 0px" }}>
 							<Typography
@@ -838,6 +978,45 @@ function Calendar({ contractors, events, projects, inProgress }) {
           </Card>
         </Popup>
       </div> */}
+	  <Dialog onClose={() => setEventSelected(false)} open={eventSelected}>
+            <DialogTitle id="alert-dialog-title">
+                {"Please accept all if the painter attended everyday."}
+            </DialogTitle>
+            {/* <DialogContent>
+                <DialogContentText id="alert-dialog-description">
+                    
+                </DialogContentText>
+            </DialogContent> */}
+            <DialogActions>
+			<Box>
+					<Button
+						variant="outlined"
+						color="error"
+						onClick={() => setEventSelected(false)}
+						sx={{ mr: 10, ml: 5 }}
+					>
+						Cancel
+					</Button>
+					<Button
+						variant="contained"
+						color="success"
+						onClick={() => handleAccept(popupdata, ZOHO)}
+					>
+						Accept All
+					</Button>
+				</Box>
+            </DialogActions>
+
+        </Dialog>
+
+			{/* <Modal
+				open={}
+				onClose={}
+				aria-labelledby="modal-modal-title"
+				aria-describedby="modal-modal-description"
+			>
+				
+			</Modal> */}
 		</Box>
 	);
 }
