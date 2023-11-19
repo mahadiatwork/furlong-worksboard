@@ -1,131 +1,171 @@
-import { Box, Card, CircularProgress, Grid } from "@mui/material";
+import { Box, Card, CircularProgress, Grid, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import "./App.css";
 import Calendar from "./components/Calendar";
 const ZOHO = window.ZOHO;
 function App() {
-  const [view, setView] = useState("month");
-  const [projects, setProjects] = useState([]);
-  const [painters, setPainters] = useState([]);
-  const [zohoLoaded, setZohoLoaded] = useState(false);
-  const [events, setEvents] = useState([]);
-  const [reload, setReload] = useState(false);
-  const [inProgress,setInProgress] = useState([])
+	const [view, setView] = useState("month");
+	const [projects, setProjects] = useState([]);
+	const [painters, setPainters] = useState([]);
+	const [zohoLoaded, setZohoLoaded] = useState(false);
+	const [events, setEvents] = useState([]);
+	const [reload, setReload] = useState(false);
+	const [inProgress, setInProgress] = useState([]);
+	const [blockedProjects, setBlockedProjects] = useState([]);
+	const [fetchDataLoading, setFetchDataLoading] = useState(true);
 
-  //form submitted handler for input form
-  const setFormSubmitted = () => {
-    window.location.reload();
-  };
-  useEffect(() => {
-    const zohoConnect = async () => {
-      ZOHO.embeddedApp.on("PageLoad", function (data) {});
-      const zohoLoaded = await ZOHO.embeddedApp
-        .init()
-        .then(() => setZohoLoaded(true));
+	//form submitted handler for input form
+	const setFormSubmitted = () => {
+		window.location.reload();
+	};
+	useEffect(() => {
+		const zohoConnect = async () => {
+			ZOHO.embeddedApp.on("PageLoad", function (data) {});
+			const zohoLoaded = await ZOHO.embeddedApp
+				.init()
+				.then(() => setZohoLoaded(true));
 
-      let config = {
-        select_query:
-          "select Name,Project_Timing,id,Work_Summary_Sale,Account_name,Budget_time_Add_Remove from FP_Projects where ((((Project_Status = 'Requested') or (Project_Status != 'In Progress'))or(Project_Status = 'Rectification'))and(Job_Offer_Status = 'Not Allocated'))",
-      };
-      const projectsResp = await ZOHO.CRM.API.coql(config).then(function (
-        data
-      ) {
-        const sortedData = data.data.sort((a, b) => {
-          const nameA = (a.Account_name || '').toUpperCase(); // Handle null values
-          const nameB = (b.Account_name || '').toUpperCase(); // Handle null values
-        
-          if (nameA < nameB) {
-            return -1;
-          } else if (nameA > nameB) {
-            return 1;
-          } else {
-            return 0;
-          }
-        });
-        console.log({ sortedData });
-        setProjects(sortedData);
-      });
+			let config = {
+				select_query:
+					"select Name,Project_Timing,id,Work_Summary_Sale,Account_name,Budget_time_Add_Remove from FP_Projects where ((((Project_Status = 'Requested') or (Project_Status != 'In Progress'))or(Project_Status = 'Rectification'))and(Job_Offer_Status = 'Not Allocated'))",
+			};
+			const projectsResp = await ZOHO.CRM.API.coql(config).then(function (
+				data
+			) {
+				const sortedData = data.data.sort((a, b) => {
+					const nameA = (a.Account_name || "").toUpperCase(); // Handle null values
+					const nameB = (b.Account_name || "").toUpperCase(); // Handle null values
 
-      // (project_allocation:equals:false)
+					if (nameA < nameB) {
+						return -1;
+					} else if (nameA > nameB) {
+						return 1;
+					} else {
+						return 0;
+					}
+				});
+				console.log({ sortedData });
+				setProjects(sortedData);
+			});
 
-      // Query: "(Contractor_Status:equals:Active)",
+			// (project_allocation:equals:false)
 
-      const painterData = await ZOHO.CRM.API.searchRecord({
-        Entity: "Contractors",
-        Type: "criteria",
-        Query:
-          "((Contractor_Status:equals:Active)and(Employment_Type:equals:Contractor))",
-      });
+			// Query: "(Contractor_Status:equals:Active)",
 
-      const projectData = await ZOHO.CRM.API.searchRecord({
-        Entity: "FP_Projects",
-        Type: "criteria",
-        Query:
-          "((Project_Status:equals:Requested)and(Job_Offer_Status:equals:Not Allocated))",
-      });
+			const painterData = await ZOHO.CRM.API.searchRecord({
+				Entity: "Contractors",
+				Type: "criteria",
+				Query:
+					"((Contractor_Status:equals:Active)and(Employment_Type:equals:Contractor))",
+			});
 
-      const InProgressProjectData = await ZOHO.CRM.API.searchRecord({
-        Entity: "FP_Projects",
-        Type: "criteria",
-        Query: "Project_Status:equals:In Progress",
-      });
+			const projectData = await ZOHO.CRM.API.searchRecord({
+				Entity: "FP_Projects",
+				Type: "criteria",
+				Query:
+					"((Project_Status:equals:Requested)and(Job_Offer_Status:equals:Not Allocated))",
+			});
 
-      setInProgress(InProgressProjectData.data)
-      console.log({projects})
+			const InProgressProjectData = await ZOHO.CRM.API.searchRecord({
+				Entity: "FP_Projects",
+				Type: "criteria",
+				Query: "Project_Status:equals:In Progress",
+			});
 
-      setPainters(painterData.data);
+			setInProgress(InProgressProjectData.data);
 
-      const eventData = await ZOHO.CRM.API.getAllRecords({
-        Entity: "Job_Allocations",
-        sort_order: "asc",
-        per_page: 100,
-        page: 1,
-      });
+			setPainters(painterData.data);
 
+			const eventData = await ZOHO.CRM.API.getAllRecords({
+				Entity: "Job_Allocations",
+				sort_order: "asc",
+				per_page: 100,
+				page: 1,
+			});
 
-      let zohoEvents = [];
+			const blockedProjectsTemp = await ZOHO.CRM.API.searchRecord({
+				Entity: "Job_Allocations",
+				Type: "criteria",
+				Query: "Type:equals:Blocked",
+			});
 
-      // config = {
-      //   select_query:
-      //     "select Projects,Contractor,Start_Date,End_Date,Color_Code from Job_Allocations where Name	is not null",
-      // };
-      // const eventResp = await ZOHO.CRM.API.coql(config).then(function (data) {
-      //   if(data.data.length > 0){
-      //     setEvents(data.data);
-      //   }
-      // });
+			let test = blockedProjectsTemp?.data?.map((el, index) => {
+				let data = {
+					resource: el?.Contractor?.id,
+					start: el?.Start_Date,
+					end: el?.End_Date,
+				};
+				return data;
+			});
 
-      eventData.data.forEach((event) => {
-        zohoEvents.push(event);
-      });
-      setEvents(zohoEvents);
-    };
-    zohoConnect();
-  }, []);
+			console.log({test});
 
-  // console.log({ events });
+			setBlockedProjects(test);
 
-  if (painters.length === 0) {
-    return (
-      <Box
-        sx={{
-          height: "100vh",
-          width: "100%",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
+			let zohoEvents = [];
+      
+			// const start_time=blockedProjects[0].Start_Date
+			// const end_time = blockedProjects[0].End_Date
+			// const id =blockedProjects[0].Contractor.id
 
-  return (
-    <Box sx={{ height: "100vh",overflowY: "hidden"}}>
-      <Calendar contractors={painters} events={events} projects={projects} inProgress={inProgress} />
-    </Box>
-  );
+			// config = {
+			//   select_query:
+			//     "select Projects,Contractor,Start_Date,End_Date,Color_Code from Job_Allocations where Name	is not null",
+			// };
+			// const eventResp = await ZOHO.CRM.API.coql(config).then(function (data) {
+			//   if(data.data.length > 0){
+			//     setEvents(data.data);
+			//   }
+			// });
+
+			eventData.data.forEach((event) => {
+				zohoEvents.push(event);
+			});
+			setEvents(zohoEvents);
+			setFetchDataLoading(false);
+		};
+		zohoConnect();
+	}, []);
+	
+
+	if (painters.length === 0) {
+		return (
+			<Box
+				sx={{
+					height: "100vh",
+					width: "100%",
+					display: "flex",
+					justifyContent: "center",
+					alignItems: "center",
+				}}
+			>
+				<CircularProgress />
+			</Box>
+		);
+	}
+
+	return (
+		<Box sx={{ height: "100vh", overflowY: "hidden" }}>
+			{/* {!fetchDataLoading ? (
+				<Calendar
+					contractors={painters}
+					events={events}
+					projects={projects}
+					inProgress={inProgress}
+					blockedProjects={blockedProjects}
+				/>
+			) : (
+				<Typography>Loading...</Typography>
+			)} */}
+			<Calendar
+					contractors={painters}
+					events={events}
+					projects={projects}
+					inProgress={inProgress}
+					blockedProjects={blockedProjects}
+				/>
+		</Box>
+	);
 }
 
 export default App;
