@@ -143,6 +143,9 @@ function App() {
 			</Box>
 		);
 	}
+	// const accha= inProgress.sort((a, b) => a.Account_name.localeCompare(b.name))
+	// console.log({inProgress})
+	// console.log({accha})
 
 	return (
 		<Box sx={{ height: "100vh", overflowY: "hidden" }}>

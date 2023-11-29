@@ -133,35 +133,20 @@ function Calendar({
 
 	if (events.length > 0) {
 		events.forEach((event) => {
-			console.log({ mahadi: event?.Contractor?.id });
+			
 			if (event.Projects !== null) {
-        if(event.Projects.name === "Not Available"){
-          myEvents.push({
-            start: event.Start_Date,
-            end: moment(event.End_Date).format("YYYY-MM-DD"),
-            title: event.Projects.name,
-            resource: event?.Contractor?.id,
-            event_id: event?.id,
-            color: "#F14949",
-            project_id: event?.Projects?.id,
-            Project_Summary: event.Project_Summary,
-            estimated_time_budget: event.Current_Estimated_Time_Budget,
-            Excluded_Dates: event.Excluded_Dates,
-          });
-        }else{
-          myEvents.push({
-            start: event.Start_Date,
-            end: moment(event.End_Date).format("YYYY-MM-DD"),
-            title: event.Projects.name,
-            resource: event?.Contractor?.id,
-            event_id: event?.id,
-            color: event.Color_Code,
-            project_id: event?.Projects?.id,
-            Project_Summary: event.Project_Summary,
-            estimated_time_budget: event.Current_Estimated_Time_Budget,
-            Excluded_Dates: event.Excluded_Dates,
-          });
-        }
+				myEvents.push({
+					start: event.Start_Date,
+					end: moment(event.End_Date).format("YYYY-MM-DD"),
+					title: event.Projects.name,
+					resource: event?.Contractor?.id,
+					event_id: event?.id,
+					color: event.Color_Code,
+					project_id: event?.Projects?.id,
+					Project_Summary: event.Project_Summary,
+					estimated_time_budget: event.Current_Estimated_Time_Budget,
+					Excluded_Dates: event.Excluded_Dates,
+				});
 			}
 		});
 	}
@@ -173,11 +158,11 @@ function Calendar({
 	const onEventCreate = React.useCallback(async (event) => {
 		const start_date = moment(event.event.start.toString());
 		const end_date = moment(event.event.end.toString());
-		console.log({ event });
+		// console.log({ event });
 		const days_in_between = end_date.diff(start_date, "days");
 		
     let  recordData ={}
-    if (event?.event?.title === "Not Available") {
+    if (event?.event?.title === "Blocked Project") {
       recordData = {
        Start_Date: start_date.format("YYYY-MM-DD"),
        End_Date: end_date.format("YYYY-MM-DD"),
@@ -195,7 +180,7 @@ function Calendar({
         Project_Name: event?.event?.title,
       };
     }
-		console.log({ recordData: recordData, days_in_between: days_in_between });
+		
 		await ZOHO.CRM.API.insertRecord({
 			Entity: "Job_Allocations",
 			APIData: recordData,
@@ -205,19 +190,29 @@ function Calendar({
 				toast({
 					message: "Project Allocated Successfully",
 				});
-        
-				const attendenceData = {
-					Name: event.event.title,
-					Attendance_Confirmation: "Scheduled",
-					Attendance_Date: start_date.format("YYYY-MM-DD"),
-					Scheduling: { id: data.data[0].details.id },
-				};
+				console.log("max",event.event)
+				let attendenceData={}
+				if (event.event.title) {
+					attendenceData = {
+						Name: event.event.title,
+						Attendance_Confirmation: "Contractor Unavailable",
+						Attendance_Date: start_date.format("YYYY-MM-DD"),
+						Scheduling: { id: data.data[0].details.id },
+					};
+				}else{
+					attendenceData = {
+						Name: event.event.title,
+						Attendance_Confirmation: "Scheduled",
+						Attendance_Date: start_date.format("YYYY-MM-DD"),
+						Scheduling: { id: data.data[0].details.id },
+					};
+				}
 				ZOHO.CRM.API.insertRecord({
 					Entity: "Project_Attendance",
 					APIData: attendenceData,
 					Trigger: ["workflow"],
 				}).then(function (data) {
-					// console.log( data.data[0].details.id );
+					
           // if (event?.event?.title === "Blocked Project") {
           //   var blockConfig={
           //     Entity:"Job_Allocations",
@@ -229,7 +224,7 @@ function Calendar({
           //   }
           //   ZOHO.CRM.API.updateRecord(blockConfig)
           //   .then(function(data){
-          //       console.log(data)
+          //       
           //   })
           // }
 				});
@@ -253,13 +248,11 @@ function Calendar({
 		});
 	}, []);
 
-	console.log({ invalidStartDate });
-	console.log({ invalidEndDate });
 
 	const now = new Date();
 
 	const activeProjects = [];
-
+	
 	const as_soon_as_possible = [];
 	const urgent = [];
 	const term_1_holiday = [];
@@ -313,11 +306,12 @@ function Calendar({
 		{ tasks: specific_dates_provided, title: "Specific Dates Provided" },
 		{ tasks: weekend_works, title: "Weekend Works" },
 	];
+	const blockProject =[]
 
 	if (inProgress.length > 0) {
 		inProgress.forEach((project) => {
-			if (project.Account_name === "Not Available") {
-				activeProjects.push(createTask(project, "#f25e5e"));
+			if (project.Account_name === "Blocked Project") {
+				blockProject.push(createTask(project, "#f25e5e"));
 			} else {
 				activeProjects.push(createTask(project, "#C4F0B3"));
 			}
@@ -329,7 +323,7 @@ function Calendar({
 	/* ------------------Fahims Task--------------- */
 
 	const onEventUpdated = React.useCallback(async (args) => {
-		// console.log('hello',args.event.resource)
+		
 		// here you can update the event in your storage as well, after drag & drop or resize
 		const changedEvent = args.event;
 		const event_id = changedEvent.event_id;
@@ -339,7 +333,7 @@ function Calendar({
 		let dateArray = dateRange(start, end);
 		let diffDates = dateArray[1];
 		let updatedDates = dateArray[0];
-		console.log({ diffDates }, { updatedDates });
+		// console.log({ diffDates }, { updatedDates });
 
 		// console.log({ event_id });
 
@@ -370,7 +364,7 @@ function Calendar({
 			};
 
 			ZOHO.CRM.API.updateRecord(new_config).then(function (data) {
-				console.log("fahim", data.data[0]?.details?.id);
+				
 
 				const newRecId = data.data[0]?.details?.id;
 
@@ -402,7 +396,7 @@ function Calendar({
 							Trigger: ["workflow"],
 						};
 						ZOHO.CRM.API.updateRecord(RelatedConfig).then(function (data) {
-							console.log("tazwer", data);
+							// console.log("tazwer", data);
               // window.location.reload(false);
 						});
 					}
@@ -686,7 +680,7 @@ function Calendar({
 					);
 					excludedDate = excludedDates;
 				}
-				console.log({ excludedDate });
+				// console.log({ excludedDate });
 				setExcluded(excludedDate);
 				setStartDate(moment(foundevent?.start));
 				setEndDate(moment(foundevent?.end));
@@ -739,7 +733,7 @@ function Calendar({
 					Trigger: ["workflow"],
 				};
 				ZOHO.CRM.API.updateRecord(config).then(function (data) {
-					console.log(data);
+					// console.log(data);
 					var config = {
 						Entity: "Job_Allocations",
 						APIData: {
@@ -749,7 +743,7 @@ function Calendar({
 						Trigger: ["workflow"],
 					};
 					ZOHO.CRM.API.updateRecord(config).then(function (data) {
-						console.log(data);
+						// console.log(data);
 						setEventSelected(false);
 						window.location.reload(false);
 					});
@@ -788,6 +782,8 @@ function Calendar({
 	const handleClose = (value) => {
 		setDeleteDialog(false);
 	};
+	const SortedActiveProjects =activeProjects.sort((a, b) => a.title.localeCompare(b.name))
+	
 
 	return (
 		<Box sx={{ height: "100vh", overflowY: "hidden", bgcolor: "#f8f8f8" }}>
@@ -854,10 +850,26 @@ function Calendar({
 								align="center"
 								variant="h5"
 							>
+								Contractor Unavailable
+							</Typography>
+							<div>
+								{blockProject.map((task, i) => (
+									<Task key={i} data={task} />
+								))}
+							</div>
+						</div>
+					)}
+					{!eventSelected && (
+						<div>
+							<Typography
+								sx={{ margin: "10px 0px" }}
+								align="center"
+								variant="h5"
+							>
 								In Progress
 							</Typography>
 							<div>
-								{activeProjects.map((task, i) => (
+								{SortedActiveProjects.map((task, i) => (
 									<Task key={i} data={task} />
 								))}
 							</div>
@@ -877,15 +889,16 @@ function Calendar({
 				aria-labelledby="modal-modal-title"
 				aria-describedby="modal-modal-description"
 			>
-				<Box sx={style}>
+				<Box sx={style} display={'flex'} flexWrap={'wrap'} justifyContent={'space-around'}>
 					<Button
 						variant="outlined"
 						color="error"
 						onClick={() => setEventSelected(false)}
-						sx={{ mr: 10, ml: 5 }}
+						// sx={{ mr: 10, ml: 5 }}
 					>
 						Cancel
 					</Button>
+					
 					<Button
 						variant="contained"
 						color="success"
@@ -893,6 +906,10 @@ function Calendar({
 					>
 						Accept All
 					</Button>
+					<Button variant="contained" color="error" onClick={()=>handleDelete(popupdata,ZOHO)}>
+						Delete All
+					</Button>
+					
 				</Box>
 			</Modal>
 		</Box>
@@ -903,7 +920,7 @@ export default Calendar;
 
 function Task(props) {
 	const [draggable, setDraggable] = React.useState();
-
+	
 	const setDragElm = React.useCallback((elm) => {
 		// console.log({ elm });
 		setDraggable(elm);
@@ -912,7 +929,7 @@ function Task(props) {
 	return (
 		<div
 			ref={setDragElm}
-			style={{ background: `${props.data.title === "Blocked Project" ? "#f14949" : props.data.color }`}}
+			style={{ background: props.data.color }}
 			className="external-event-task"
 		>
 			<Tooltip title={`${props.data.work_summary}`} placement="left-start">
@@ -920,7 +937,7 @@ function Task(props) {
 					sx={{
 						textTransform: "none",
 						padding: 0,
-						color: `${props.data.title === "Blocked Project" ? "#fff" : "#000" }`,
+						color: "#000",
 					}}
 				>
 					{props.data.title === "Blocked Project"
