@@ -290,6 +290,7 @@ function Calendar({
 			Project_Timing: project?.Project_Timing || "",
 			start: moment(now).format("YYYY-MM-DD"),
 			end: moment(now).format("YYYY-MM-DD"),
+			projectNo: project.Job_Number
 		};
 	}
 
@@ -549,52 +550,6 @@ function Calendar({
 			}
 		});
 
-		// await ZOHO.CRM.API.updateRecord(config).then(function (data) {
-		// 	let ID =0;
-		// 	if (data.data[0].status === "success") {
-		// 		toast({
-		// 			message: "Project Allocation Updated Successfully",
-		// 		});
-
-		// 		const startDate = moment(changedEvent.start.toString());
-		// 		const endDate = moment(changedEvent.end.toString());
-		// 		console.log(startDate, endDate);
-		// 		const daysBetween = endDate.diff(startDate, "days");
-		// 		 ID = data.data[0].details.id;
-		// 		console.log({ daysBetween });
-
-		// 		ZOHO.CRM.API.getRecord({
-		// 			Entity: "Job_Allocations",
-		// 			approved: "both",
-		// 			RecordID: ID,
-		// 		}).then(function (data) {
-		// 			///creating attendence for everyday////
-		// 			let currentDate = startDate.clone();
-
-		// 			for (let i = 0; i < daysBetween-1; i++) {
-		// 				let attendenceData = {
-		// 					Name: data.data[0].Project_Name,
-		// 					Attendance_Confirmation: "Scheduled",
-		// 					Attendance_Date: currentDate.add(1, 'days').format("YYYY-MM-DD"),
-		// 					Scheduling: { id: ID },
-		// 				};
-		// 				ZOHO.CRM.API.insertRecord({
-		// 					Entity: "Project_Attendance",
-		// 					APIData: attendenceData,
-		// 					Trigger: ["workflow"],
-		// 				});
-		// 			}
-
-		// 			// console.log(data);
-		// 		});
-		// 		// console.log({updatedData:data});
-		// 	} else {
-		// 		toast({
-		// 			message: "There is something wrong",
-		// 		});
-		// 	}
-		// });
-		// ...
 	}, []);
 
 	const myColors = React.useMemo(() => {
@@ -609,40 +564,6 @@ function Calendar({
 		];
 	}, []);
 
-	// useEffect(()=>{
-
-	// },[])
-	// const myInvalids = useMemo(() => {
-	// 	// console.log({ start: blockedProjects[0].Start_Date });
-	// 	// console.log({ end: blockedProjects[0].End_Date });
-	// 	// console.log({ id: blockedProjects[0].Contractor.id });
-
-	// 	// const yesterday = blockedProjects[0].Start_Date;
-	// 	// const today = blockedProjects[0].End_Date;
-	// 	// setResources(blockedProjects[0].Contractor.id);
-	// 	// const resource = blockedProjects[0].Contractor.id.toString()
-	// 	const now = new Date();
-	// 	const today = new Date(now.setMinutes(59));
-	// 	const yesterday = new Date(
-	// 		now.getFullYear(),
-	// 		now.getMonth(),
-	// 		now.getDate() - 1
-	// 	);
-
-	// 	return [
-	// 		{
-	// 			// background: "#f2f4f7",
-	// 			// recurring: {
-	// 			// 	repeat: "weekly",
-	// 			// 	weekDays: "SA,SU",
-	// 			// },
-	// 			resource: "1915689000015207400",
-	// 			// resource: resource,
-	// 			start: yesterday,
-	// 			end: today,
-	// 		},
-	// 	];
-	// }, []);
 
 	const desiredOrder = [
 		"Donny Georgopoulos",
@@ -955,6 +876,7 @@ function Task(props) {
 		setDraggable(elm);
 	}, []);
 
+
 	return (
 		<div
 			ref={setDragElm}
@@ -971,8 +893,8 @@ function Task(props) {
 				>
 					{props.data.title === "Blocked Project"
 						? props.data.title
-						: props.data.title +
-						  ": CET - " +
+						: props.data.projectNo + " " + props.data.title +
+						  ": CET " +
 						  `${props.data.estimated_time_budget || "(n/a)"}`}
 				</Button>
 			</Tooltip>
