@@ -290,7 +290,7 @@ function Calendar({
 			Project_Timing: project?.Project_Timing || "",
 			start: moment(now).format("YYYY-MM-DD"),
 			end: moment(now).format("YYYY-MM-DD"),
-			projectNo: project.Job_Number
+			projectName: project.Name
 		};
 	}
 
@@ -308,6 +308,7 @@ function Calendar({
 	if (projects.length > 0) {
 		projects.forEach((project) => {
 			const projectTiming = project.Project_Timing;
+			console.log({project})
 			if (timingToTasksMap.hasOwnProperty(projectTiming)) {
 				const task = createTask(project, "gray");
 				timingToTasksMap[projectTiming].push(task);
@@ -726,6 +727,8 @@ function Calendar({
 		a.title.localeCompare(b.name)
 	);
 
+
+
 	return (
 		<>
 			<Box sx={{ height: "100vh", overflowY: "scroll", bgcolor: "#f8f8f8" }}>
@@ -893,7 +896,7 @@ function Task(props) {
 				>
 					{props.data.title === "Blocked Project"
 						? props.data.title
-						: props.data.projectNo + " " + props.data.title +
+						: props.data.projectName +
 						  ": CET " +
 						  `${props.data.estimated_time_budget || "(n/a)"}`}
 				</Button>
