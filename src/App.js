@@ -9,10 +9,10 @@ function App() {
 	const [painters, setPainters] = useState([]);
 	const [zohoLoaded, setZohoLoaded] = useState(false);
 	const [events, setEvents] = useState([]);
-	const [reload, setReload] = useState(false);
 	const [inProgress, setInProgress] = useState([]);
 	const [blockedProjects, setBlockedProjects] = useState([]);
 	const [fetchDataLoading, setFetchDataLoading] = useState(true);
+	const [rectification, setRectification] = useState([])
 
 	//form submitted handler for input form
 	const setFormSubmitted = () => {
@@ -27,7 +27,7 @@ function App() {
 
 			let config = {
 				select_query:
-					"select Name,Project_Timing,id,Work_Summary_Sale,Account_name,Budget_time_Add_Remove from FP_Projects where ((((Project_Status = 'Requested') or (Project_Status != 'In Progress'))or(Project_Status = 'Rectification'))and(Job_Offer_Status = 'Not Allocated'))",
+					"select Name,Project_Timing,id,Work_Summary_Sale,Account_name,Budget_time_Add_Remove,Project_Status from FP_Projects where ((((Project_Status = 'Requested') or (Project_Status != 'In Progress'))or(Project_Status = 'Rectification'))and(Job_Offer_Status = 'Not Allocated'))",
 			};
 			const projectsResp = await ZOHO.CRM.API.coql(config).then(function (
 				data
@@ -59,13 +59,6 @@ function App() {
 					"((Contractor_Status:equals:Active)and(Employment_Type:equals:Contractor))",
 			});
 
-			const projectData = await ZOHO.CRM.API.searchRecord({
-				Entity: "FP_Projects",
-				Type: "criteria",
-				Query:
-					"((Project_Status:equals:Requested)and(Job_Offer_Status:equals:Not Allocated))",
-			});
-
 			const InProgressProjectData = await ZOHO.CRM.API.searchRecord({
 				Entity: "FP_Projects",
 				Type: "criteria",
@@ -73,6 +66,14 @@ function App() {
 			});
 
 			setInProgress(InProgressProjectData.data);
+
+			const rectificationData = await ZOHO.CRM.API.searchRecord({
+				Entity: "FP_Projects",
+				Type: "criteria",
+				Query: "Project_Status:equals:Rectification",
+			});
+
+			setRectification(rectificationData.data)
 
 			setPainters(painterData.data);
 
@@ -166,6 +167,7 @@ function App() {
 					projects={projects}
 					inProgress={inProgress}
 					blockedProjects={blockedProjects}
+					rectification={rectification}
 				/>
 		</Box>
 	);
