@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   Grid,
+  IconButton,
   Modal,
   Paper,
   Table,
@@ -34,6 +35,21 @@ import { CallMissedOutgoing } from "@mui/icons-material";
 import ViewToggle from "./ViewToggle";
 
 const ZOHO = window.ZOHO;
+
+const modernStyle = {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  width: '400px',
+  bgcolor: 'background.paper',
+  boxShadow: 24,
+  borderRadius: '10px',
+  p: 4,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+};
 
 // Create a TaskAccordion component
 function TaskAccordion({ tasks, title }) {
@@ -825,59 +841,45 @@ function Calendar({
           deleteData={popupdata}
           ZOHO={ZOHO}
         />
-        <Modal
-          open={eventSelected}
-          onClose={() => setEventSelected(false)}
-          aria-labelledby="modal-modal-title"
-          aria-describedby="modal-modal-description"
-        >
-          <Box sx={style}>
-            <Box sx={{ pb: 4 }}>
-              <Typography>
-                <span style={{ fontWeight: "bold" }}>Name: </span>
-                {popupdata?.title}
-              </Typography>
-              <Typography>
-                <span style={{ fontWeight: "bold" }}>Project Summary: </span>
-                {popupdata?.Project_Summary || popupdata?.Scope_Of_Work}
-              </Typography>
-              <Typography>
-                <span style={{ fontWeight: "bold" }}>CET: </span>
-                {popupdata?.estimated_time_budget}
-              </Typography>
-            </Box>
-            <Box
-              display={"flex"}
-              flexWrap={"wrap"}
-              justifyContent={"space-around"}
-            >
-              {console.log({ popupdata })}
-              <Button
-                variant="outlined"
-                color="error"
-                onClick={() => setEventSelected(false)}
-                // sx={{ mr: 10, ml: 5 }}
-              >
-                Cancel
-              </Button>
+<Modal
+      open={eventSelected}
+      onClose={() => setEventSelected(false)}
+      aria-labelledby="modal-modal-title"
+      aria-describedby="modal-modal-description"
+    >
+      <Box sx={modernStyle}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography id="modal-modal-title" variant="h6" component="h2" fontWeight="bold">
+            Event Details
+          </Typography>
+          <IconButton onClick={() => setEventSelected(false)} sx={{ p: 0.5 }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        
+        <Typography variant="body1">
+          <strong>Name:</strong> {popupdata?.title}
+        </Typography>
+        <Typography variant="body1">
+          <strong>Project Summary:</strong> {popupdata?.Project_Summary || popupdata?.Scope_Of_Work}
+        </Typography>
+        <Typography variant="body1">
+          <strong>CET:</strong> {popupdata?.estimated_time_budget}
+        </Typography>
 
-              <Button
-                variant="contained"
-                color="success"
-                onClick={() => handleAccept(popupdata, ZOHO)}
-              >
-                Accept All
-              </Button>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={() => handleDelete(popupdata, ZOHO)}
-              >
-                Delete All
-              </Button>
-            </Box>
-          </Box>
-        </Modal>
+        <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+          <Button variant="outlined" color="error" onClick={() => setEventSelected(false)}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="success" onClick={() => handleAccept(popupdata, ZOHO)}>
+            Accept All
+          </Button>
+          <Button variant="contained" color="error" onClick={() => handleDelete(popupdata, ZOHO)}>
+            Delete All
+          </Button>
+        </Box>
+      </Box>
+    </Modal>
       </Box>
     </>
   );
