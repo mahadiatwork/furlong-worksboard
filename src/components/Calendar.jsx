@@ -26,7 +26,7 @@ import moment from "moment";
 import CloseIcon from "@mui/icons-material/Close";
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterMoment } from "@mui/x-date-pickers/AdapterMoment";
-import { handleDelete, handleUpdate, sortDates } from "./helpingFunctions";
+import { handleAccept, handleDelete, handleUpdate, sortDates } from "./helpingFunctions";
 import dayjs from "dayjs";
 import ExcludeDates from "./ExcludeDates";
 import DeleteDialog from "./DeleteDialog";
@@ -37,17 +37,17 @@ import ViewToggle from "./ViewToggle";
 const ZOHO = window.ZOHO;
 
 const modernStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: '400px',
-  bgcolor: 'background.paper',
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: "400px",
+  bgcolor: "background.paper",
   boxShadow: 24,
-  borderRadius: '10px',
+  borderRadius: "10px",
   p: 4,
-  display: 'flex',
-  flexDirection: 'column',
+  display: "flex",
+  flexDirection: "column",
   gap: 2,
 };
 
@@ -521,6 +521,8 @@ function Calendar({
             toast({
               message: "Project Allocation Updated Successfully",
             });
+            // Reload the page after successful update
+            window.location.reload();
           } else {
             toast({
               message: "There is something wrong",
@@ -627,61 +629,6 @@ function Calendar({
     [myEvents]
   );
 
-  const onEventHoverOut = React.useCallback(() => {
-    timerRef.current = setTimeout(() => {
-      setOpen(false);
-    }, 200);
-  }, []);
-
-  const onMouseEnter = React.useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-  }, []);
-
-  const onMouseLeave = React.useCallback(() => {
-    timerRef.current = setTimeout(() => {
-      setOpen(false);
-    }, 200);
-  }, []);
-
-  const handleAccept = (even_data, ZOHO) => {
-    const id = even_data.event_id;
-    ZOHO.CRM.API.getRelatedRecords({
-      Entity: "Job_Allocations",
-      RecordID: id,
-      RelatedList: "Attendance_Log",
-      page: 1,
-      per_page: 200,
-    }).then(function (data) {
-      data.data.map((item) => {
-        var config = {
-          Entity: "Project_Attendance",
-          APIData: {
-            id: item.id,
-            Attendance_Confirmation: "Attended",
-          },
-          Trigger: ["workflow"],
-        };
-        ZOHO.CRM.API.updateRecord(config).then(function (data) {
-          // console.log(data);
-          var config = {
-            Entity: "Job_Allocations",
-            APIData: {
-              id: id,
-              Color_Code: "#C4F0B3",
-            },
-            Trigger: ["workflow"],
-          };
-          ZOHO.CRM.API.updateRecord(config).then(function (data) {
-            // console.log(data);
-            setEventSelected(false);
-            window.location.reload(false);
-          });
-        });
-      });
-    });
-  };
   //Excluded days looping
   let days = [];
 
@@ -841,45 +788,71 @@ function Calendar({
           deleteData={popupdata}
           ZOHO={ZOHO}
         />
-<Modal
-      open={eventSelected}
-      onClose={() => setEventSelected(false)}
-      aria-labelledby="modal-modal-title"
-      aria-describedby="modal-modal-description"
-    >
-      <Box sx={modernStyle}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography id="modal-modal-title" variant="h6" component="h2" fontWeight="bold">
-            Event Details
-          </Typography>
-          <IconButton onClick={() => setEventSelected(false)} sx={{ p: 0.5 }}>
-            <CloseIcon />
-          </IconButton>
-        </Box>
-        
-        <Typography variant="body1">
-          <strong>Name:</strong> {popupdata?.title}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Project Summary:</strong> {popupdata?.Project_Summary || popupdata?.Scope_Of_Work}
-        </Typography>
-        <Typography variant="body1">
-          <strong>CET:</strong> {popupdata?.estimated_time_budget}
-        </Typography>
+        <Modal
+          open={eventSelected}
+          onClose={() => setEventSelected(false)}
+          aria-labelledby="modal-modal-title"
+          aria-describedby="modal-modal-description"
+        >
+          <Box sx={modernStyle}>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={2}
+            >
+              <Typography
+                id="modal-modal-title"
+                variant="h6"
+                component="h2"
+                fontWeight="bold"
+              >
+                Event Details
+              </Typography>
+              <IconButton
+                onClick={() => setEventSelected(false)}
+                sx={{ p: 0.5 }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
 
-        <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
-          <Button variant="outlined" color="error" onClick={() => setEventSelected(false)}>
-            Cancel
-          </Button>
-          <Button variant="contained" color="success" onClick={() => handleAccept(popupdata, ZOHO)}>
-            Accept All
-          </Button>
-          <Button variant="contained" color="error" onClick={() => handleDelete(popupdata, ZOHO)}>
-            Delete All
-          </Button>
-        </Box>
-      </Box>
-    </Modal>
+            <Typography variant="body1">
+              <strong>Name:</strong> {popupdata?.title}
+            </Typography>
+            <Typography variant="body1">
+              <strong>Project Summary:</strong>{" "}
+              {popupdata?.Project_Summary || popupdata?.Scope_Of_Work}
+            </Typography>
+            <Typography variant="body1">
+              <strong>CET:</strong> {popupdata?.estimated_time_budget}
+            </Typography>
+
+            <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => setEventSelected(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                color="success"
+                onClick={() => handleAccept(popupdata, ZOHO, setEventSelected)}
+              >
+                Accept All
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                onClick={() => handleDelete(popupdata, ZOHO)}
+              >
+                Delete All
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
       </Box>
     </>
   );

@@ -59,3 +59,42 @@ export const handleDelete = async (event_data, ZOHO) => {
 		window.location.reload();
 	});
 };
+
+
+export const handleAccept = (even_data, ZOHO, setEventSelected) => {
+    const id = even_data.event_id;
+    ZOHO.CRM.API.getRelatedRecords({
+      Entity: "Job_Allocations",
+      RecordID: id,
+      RelatedList: "Attendance_Log",
+      page: 1,
+      per_page: 200,
+    }).then(function (data) {
+      data.data.map((item) => {
+        var config = {
+          Entity: "Project_Attendance",
+          APIData: {
+            id: item.id,
+            Attendance_Confirmation: "Attended",
+          },
+          Trigger: ["workflow"],
+        };
+        ZOHO.CRM.API.updateRecord(config).then(function (data) {
+          // console.log(data);
+          var config = {
+            Entity: "Job_Allocations",
+            APIData: {
+              id: id,
+              Color_Code: "#C4F0B3",
+            },
+            Trigger: ["workflow"],
+          };
+          ZOHO.CRM.API.updateRecord(config).then(function (data) {
+            // console.log(data);
+            setEventSelected(false);
+            window.location.reload(false);
+          });
+        });
+      });
+    });
+  };
