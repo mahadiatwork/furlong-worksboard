@@ -134,6 +134,7 @@ function Calendar({
     "Sayed A",
     "Kamalpreet",
     "Farhad",
+    "Anthony"
   ];
   const myResources = [];
   const myEvents = [];
