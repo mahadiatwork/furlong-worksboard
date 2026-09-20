@@ -11,6 +11,9 @@ import {
   Card,
   Grid,
   IconButton,
+  List,
+  ListItem,
+  ListItemText,
   Modal,
   Paper,
   Table,
@@ -24,6 +27,9 @@ import {
 } from "@mui/material";
 import moment from "moment";
 import CloseIcon from "@mui/icons-material/Close";
+import SettingsIcon from "@mui/icons-material/Settings";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterMoment } from "@mui/x-date-pickers/AdapterMoment";
 import { handleAccept, handleDelete, handleUpdate, sortDates } from "./helpingFunctions";
@@ -86,6 +92,7 @@ const style = {
 
 function Calendar({
   contractors,
+  contractorOrder = [],
   events,
   projects,
   inProgress,
@@ -105,6 +112,56 @@ function Calendar({
   // const [myEvents, setMyEvents] = useState([])
   // console.log({ blockedProjects });
 
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [draftOrder, setDraftOrder] = useState([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const contractorFullName = (c) =>
+    `${c.First_Name || ""} ${c.Last_Name || ""}`.trim();
+
+  const activeContractorNames = useMemo(() => {
+    return contractors.map(contractorFullName);
+  }, [contractors]);
+
+  const openOrderModal = () => {
+    const currentNames = new Set(activeContractorNames);
+    const ordered = contractorOrder.filter((name) => currentNames.has(name));
+    const remaining = activeContractorNames.filter(
+      (name) => !ordered.includes(name)
+    );
+    setDraftOrder([...ordered, ...remaining]);
+    setOrderModalOpen(true);
+  };
+
+  const moveDraftItem = (index, direction) => {
+    const newOrder = [...draftOrder];
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= newOrder.length) return;
+    [newOrder[index], newOrder[targetIndex]] = [
+      newOrder[targetIndex],
+      newOrder[index],
+    ];
+    setDraftOrder(newOrder);
+  };
+
+  const saveContractorOrder = async () => {
+    setSavingOrder(true);
+    try {
+      const orderText = draftOrder.join("\n");
+      await ZOHO.CRM.FUNCTIONS.execute("worksboard_set_contractor_order", {
+        arguments: JSON.stringify({ order: orderText }),
+      });
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to save contractor order", error);
+      alert(
+        "Could not save contractor order. Please check the function name and permissions."
+      );
+      setSavingOrder(false);
+    }
+  };
+
   // const view = React.useMemo(() => {
   //   return {
   //     timeline: {
@@ -114,28 +171,6 @@ function Calendar({
   //     },
   //   };
   // }, []);
-  const sortedContractor = [
-    "Donny",
-    "Troy",
-    "Christine",
-    "William",
-    "John",
-    "Muhammad",
-    "Michael",
-    "Andy",
-    "Jobanpreet",
-    "Wali",
-    "Keith",
-    "Anoop",
-    "Bostan",
-    "Richard",
-    "Parimal",
-    "Daniel",
-    "Sayed A",
-    "Kamalpreet",
-    "Farhad",
-    "Anthony"
-  ];
   const myResources = [];
   const myEvents = [];
   const tasks = [];
@@ -143,16 +178,29 @@ function Calendar({
   const outsider = [];
 
   if (contractors.length > 0) {
-    sortedContractor.map((item) => {
-      contractors.map((name) => {
-        if (name.First_Name === item) {
-          myResources.push({
-            id: name?.id,
-            name: name.First_Name + " " + name.Last_Name,
-            color: accepted ? "#C4F0B3" : "blue",
-          });
-        }
-      });
+    const added = new Set();
+    contractorOrder.forEach((orderedName) => {
+      const match = contractors.find(
+        (c) => contractorFullName(c) === orderedName
+      );
+      if (match && !added.has(match.id)) {
+        myResources.push({
+          id: match.id,
+          name: contractorFullName(match),
+          color: accepted ? "#C4F0B3" : "blue",
+        });
+        added.add(match.id);
+      }
+    });
+    contractors.forEach((name) => {
+      if (!added.has(name.id)) {
+        myResources.push({
+          id: name?.id,
+          name: contractorFullName(name),
+          color: accepted ? "#C4F0B3" : "blue",
+        });
+        added.add(name.id);
+      }
     });
   }
 
@@ -273,6 +321,7 @@ function Calendar({
       work_summary: project?.Work_Summary_Sale || "",
       estimated_time_budget: project?.Budget_time_Add_Remove || "",
       Project_Timing: project?.Project_Timing || "",
+      Project_Status: project?.Project_Status || "",
       start: moment(now).format("YYYY-MM-DD"),
       end: moment(now).format("YYYY-MM-DD"),
       projectName: project.Account_name,
@@ -290,8 +339,55 @@ function Calendar({
     "Weekend works": weekend_works,
   };
 
-  if (projects.length > 0) {
-    projects.forEach((project) => {
+  const notCompletedProjects = projects.filter(
+    (project) => project.Project_Status?.toLowerCase() !== "completed"
+  );
+  const notCompletedRectification = rectification.filter(
+    (project) => project.Project_Status?.toLowerCase() !== "completed"
+  );
+  const notCompletedInProgress = inProgress.filter(
+    (project) => project.Project_Status?.toLowerCase() !== "completed"
+  );
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const searchResults = (() => {
+    if (!normalizedSearchQuery) return [];
+
+    const allProjects = [...projects, ...rectification, ...inProgress];
+    const seen = new Set();
+    const matches = [];
+
+    allProjects.forEach((project) => {
+      if (!project?.id || seen.has(project.id)) return;
+      if (project.Account_name === "Blocked Project") return;
+
+      const accountName = (project.Account_name || "").toLowerCase();
+      const workSummary = (project.Work_Summary_Sale || "").toLowerCase();
+      const projectName = (project.Name || "").toLowerCase();
+
+      if (
+        accountName.includes(normalizedSearchQuery) ||
+        workSummary.includes(normalizedSearchQuery) ||
+        projectName.includes(normalizedSearchQuery)
+      ) {
+        seen.add(project.id);
+
+        const status = project.Project_Status?.toLowerCase();
+        let color = "#FFEB3B";
+        if (status === "completed") color = "#9E9E9E";
+        else if (status === "rectification") color = "red";
+        else if (status === "in progress") color = "#4CAF50";
+
+        matches.push(createTask(project, color));
+      }
+    });
+
+    return matches;
+  })();
+
+  if (notCompletedProjects.length > 0) {
+    notCompletedProjects.forEach((project) => {
       const projectTiming = project.Project_Timing;
       if (timingToTasksMap.hasOwnProperty(projectTiming)) {
         const task = createTask(project, "#FFEB3B");
@@ -300,8 +396,8 @@ function Calendar({
     });
   }
 
-  if (rectification.length > 0) {
-    rectification.forEach((project) => {
+  if (notCompletedRectification.length > 0) {
+    notCompletedRectification.forEach((project) => {
       const task = createTask(project, "red");
       rectificationProject.push(task);
     });
@@ -321,8 +417,8 @@ function Calendar({
   ];
   const blockProject = [];
 
-  if (inProgress.length > 0) {
-    inProgress.forEach((project) => {
+  if (notCompletedInProgress.length > 0) {
+    notCompletedInProgress.forEach((project) => {
       if (project.Account_name === "Blocked Project") {
         blockProject.push(createTask(project, "#f25e5e"));
       } else {
@@ -559,33 +655,7 @@ function Calendar({
     ];
   }, []);
 
-  const desiredOrder = [
-    "Donny Georgopoulos",
-    "Troy Kennedy",
-    "Christine Rogers",
-    "William Hunter",
-    "John Eghdame",
-    "Farhad Baleshzar",
-    "Michael Icaro",
-    "Muhummad Ashraf",
-    "Keith Higgins",
-    "Jobanpreet Singh",
-    "Andy Joseph",
-    "Parimal Patel",
-  ];
-
-  // define the custom sorting function
-
-  const sortedArray = desiredOrder.map((name) =>
-    myResources.find((obj) => obj.name === name)
-  );
-
-  const unsortedArray = myResources.filter(
-    (item) => !desiredOrder.includes(item.name)
-  );
-
-  const sortedResources = [...sortedArray, ...unsortedArray];
-
+  // Contractor order is now controlled by the worksboard_org_var org variable
   const [isOpen, setOpen] = React.useState(false);
   const [anchor, setAnchor] = React.useState(null);
   const timerRef = React.useRef(null);
@@ -682,6 +752,11 @@ function Calendar({
               <div style={{ flexGrow: 1 }}>
                 {/* This is a placeholder div to take up space and push the toggle to the right */}
               </div>
+              <Tooltip title="Change contractor order">
+                <IconButton onClick={openOrderModal} size="small">
+                  <SettingsIcon />
+                </IconButton>
+              </Tooltip>
               <ViewToggle view={view} setView={setView} />
             </Box>
             <Eventcalendar
@@ -690,6 +765,9 @@ function Calendar({
                 timeline: {
                   type: view,
                   eventList: true,
+                  // Render three months in the month view so users can scroll
+                  // horizontally through months instead of jumping/launching to a new month.
+                  ...(view === "month" && { size: 3, columnWidth: "small" }),
                 },
               }}
               colors={myColors}
@@ -716,13 +794,63 @@ function Calendar({
             }}
           >
             {!eventSelected && (
+              <Box sx={{ padding: "10px" }}>
+                <TextField
+                  fullWidth
+                  label="Search projects"
+                  variant="outlined"
+                  size="small"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </Box>
+            )}
+            {!eventSelected && normalizedSearchQuery !== "" && (
+              <Box sx={{ padding: "10px 0px" }}>
+                <Typography
+                  variant="h5"
+                  align="center"
+                  sx={{ padding: "10px 0px" }}
+                >
+                  Search Results
+                </Typography>
+                {searchResults.length > 0 ? (
+                  <div>
+                    {searchResults.map((task, i) => (
+                      <Task key={i} data={task} />
+                    ))}
+                  </div>
+                ) : (
+                  <Typography align="center" variant="body2">
+                    No projects found
+                  </Typography>
+                )}
+              </Box>
+            )}
+            {!eventSelected && rectificationProject.length > 0 && (
+              <div>
+                <Typography
+                  sx={{ margin: "10px 0px" }}
+                  align="center"
+                  variant="h5"
+                >
+                  Rectification
+                </Typography>
+                <div>
+                  {rectificationProject.map((task, i) => (
+                    <Task key={i} data={task} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {!eventSelected && (
               <Box sx={{ padding: "10px 0px" }}>
                 <Typography
                   variant="h5"
                   align="center"
                   sx={{ padding: "20px 0px" }}
                 >
-                  Available Projects
+                  Projects Requested
                 </Typography>
                 {taskTypes.map((taskType, index) => (
                   <TaskAccordion
@@ -744,22 +872,6 @@ function Calendar({
                 </Typography>
                 <div>
                   {blockProject.map((task, i) => (
-                    <Task key={i} data={task} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {!eventSelected && rectificationProject.length > 0 && (
-              <div>
-                <Typography
-                  sx={{ margin: "10px 0px" }}
-                  align="center"
-                  variant="h5"
-                >
-                  Rectification
-                </Typography>
-                <div>
-                  {rectificationProject.map((task, i) => (
                     <Task key={i} data={task} />
                   ))}
                 </div>
@@ -850,6 +962,94 @@ function Calendar({
                 onClick={() => handleDelete(popupdata, ZOHO)}
               >
                 Delete All
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
+        <Modal
+          open={orderModalOpen}
+          onClose={() => setOrderModalOpen(false)}
+          aria-labelledby="contractor-order-title"
+        >
+          <Box
+            sx={{
+              ...modernStyle,
+              width: "450px",
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+          >
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={2}
+            >
+              <Typography
+                id="contractor-order-title"
+                variant="h6"
+                component="h2"
+                fontWeight="bold"
+              >
+                Contractor Order
+              </Typography>
+              <IconButton
+                onClick={() => setOrderModalOpen(false)}
+                sx={{ p: 0.5 }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+
+            <Typography variant="body2" mb={2}>
+              Use the arrows to reorder contractors. New contractors not listed
+              will appear at the end.
+            </Typography>
+
+            <List dense>
+              {draftOrder.map((name, index) => (
+                <ListItem
+                  key={name}
+                  secondaryAction={
+                    <Box>
+                      <IconButton
+                        edge="end"
+                        disabled={index === 0 || savingOrder}
+                        onClick={() => moveDraftItem(index, -1)}
+                        size="small"
+                      >
+                        <ArrowUpwardIcon />
+                      </IconButton>
+                      <IconButton
+                        edge="end"
+                        disabled={index === draftOrder.length - 1 || savingOrder}
+                        onClick={() => moveDraftItem(index, 1)}
+                        size="small"
+                      >
+                        <ArrowDownwardIcon />
+                      </IconButton>
+                    </Box>
+                  }
+                >
+                  <ListItemText primary={name} />
+                </ListItem>
+              ))}
+            </List>
+
+            <Box mt={2} display="flex" justifyContent="flex-end" gap={1}>
+              <Button
+                variant="outlined"
+                onClick={() => setOrderModalOpen(false)}
+                disabled={savingOrder}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={saveContractorOrder}
+                disabled={savingOrder}
+              >
+                {savingOrder ? "Saving..." : "Save"}
               </Button>
             </Box>
           </Box>

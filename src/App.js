@@ -3,6 +3,47 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import Calendar from "./components/Calendar";
 const ZOHO = window.ZOHO;
+
+function extractOrgVariableValue(resp) {
+	if (!resp) return "";
+	if (typeof resp === "string") return resp;
+	if (resp.Success && resp.Success.Content !== undefined) return resp.Success.Content;
+	if (resp.Content !== undefined) return resp.Content;
+	if (resp.data !== undefined) return resp.data;
+	return "";
+}
+
+function parseContractorOrder(value) {
+	if (!value || typeof value !== "string") return [];
+	const trimmed = value.trim();
+	if (!trimmed) return [];
+	if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+		try {
+			const parsed = JSON.parse(trimmed);
+			if (Array.isArray(parsed)) {
+				return parsed.map((s) => String(s).trim()).filter(Boolean);
+			}
+		} catch (e) {
+			// fall through to line parsing
+		}
+	}
+	return trimmed
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+async function getZohoOrgVariable(name) {
+	if (ZOHO?.CRM?.API?.getOrgVariable) {
+		return ZOHO.CRM.API.getOrgVariable(name);
+	}
+	if (ZOHO?.CRM?.ORG?.getOrgVariable) {
+		return ZOHO.CRM.ORG.getOrgVariable(name);
+	}
+	console.warn("No Zoho org variable API available");
+	return "";
+}
+
 function App() {
 	const [view, setView] = useState("month");
 	const [projects, setProjects] = useState([]);
@@ -13,6 +54,7 @@ function App() {
 	const [blockedProjects, setBlockedProjects] = useState([]);
 	const [fetchDataLoading, setFetchDataLoading] = useState(true);
 	const [rectification, setRectification] = useState([])
+	const [contractorOrder, setContractorOrder] = useState([]);
 
 	//form submitted handler for input form
 	const setFormSubmitted = () => {
@@ -76,6 +118,9 @@ function App() {
 			setRectification(rectificationData.data)
 
 			setPainters(painterData.data);
+
+			const orgVarResp = await getZohoOrgVariable("worksboard_org_var");
+			setContractorOrder(parseContractorOrder(extractOrgVariableValue(orgVarResp)));
 
 			const eventData = await ZOHO.CRM.API.getAllRecords({
 				Entity: "Job_Allocations",
@@ -160,6 +205,7 @@ function App() {
 			)} */}
 			<Calendar
 					contractors={painters}
+					contractorOrder={contractorOrder}
 					events={events}
 					projects={projects}
 					inProgress={inProgress}
