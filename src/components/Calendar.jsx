@@ -55,6 +55,16 @@ function getProjectCrmUrl(projectId) {
     : "";
 }
 
+function getAllocationJobNumber(allocation) {
+  return (
+    allocation?.job_number ||
+    allocation?.Job_Number ||
+    allocation?.["Projects.Job_Number"] ||
+    allocation?.Projects?.Job_Number ||
+    ""
+  );
+}
+
 const modernStyle = {
   position: "absolute",
   top: "50%",
@@ -128,6 +138,7 @@ function Calendar({
     totalSources: 0,
   },
   onAllocationCreated,
+  onVisibleDateRangeChange,
 }) {
   const [start__Date, setStartDate] = useState(null);
   const [end__Date, setEndDate] = useState(null);
@@ -146,6 +157,25 @@ function Calendar({
   const [draftOrder, setDraftOrder] = useState([]);
   const [savingOrder, setSavingOrder] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const calendarView = useMemo(
+    () => ({
+      timeline: {
+        type: view,
+        eventList: true,
+        ...(view === "month" && { size: 3, columnWidth: "small" }),
+      },
+    }),
+    [view]
+  );
+  const handlePageLoading = React.useCallback(
+    ({ firstDay, lastDay }) => {
+      onVisibleDateRangeChange?.({
+        start: moment(firstDay).format("YYYY-MM-DD"),
+        end: moment(lastDay).format("YYYY-MM-DD"),
+      });
+    },
+    [onVisibleDateRangeChange]
+  );
 
   const contractorFullName = (c) =>
     `${c.First_Name || ""} ${c.Last_Name || ""}`.trim();
@@ -238,7 +268,6 @@ function Calendar({
   if (events.length > 0) {
     events.forEach((event) => {
       if (event.Projects?.id) {
-        console.log({ event });
         myEvents.push({
           start: event.Start_Date,
           end: moment(event.End_Date).format("YYYY-MM-DD"),
@@ -247,10 +276,10 @@ function Calendar({
           event_id: event?.id,
           color: event.Color_Code,
           project_id: event?.Projects?.id,
+          job_number: getAllocationJobNumber(event),
           Project_Summary: event.Project_Summary || event.Scope_Of_Work || "",
           estimated_time_budget: event.Current_Estimated_Time_Budget || 0,
           Excluded_Dates: event.Excluded_Dates,
-          accent_color: event.Color_Code || "#2563eb",
           allocation_type: event.Type || "Attendance",
           cssClass:
             event.Type === "Blocked"
@@ -321,6 +350,7 @@ function Calendar({
           Project_Summary: event.event.work_summary,
           Current_Estimated_Time_Budget:
             event.event.estimated_time_budget || 0,
+          job_number: event.event.job_number || "",
           Excluded_Dates: null,
         });
 
@@ -394,6 +424,7 @@ function Calendar({
       start: moment(now).format("YYYY-MM-DD"),
       end: moment(now).format("YYYY-MM-DD"),
       displayName: project?.Name || project?.Account_name || "Unnamed project",
+      job_number: project?.Job_Number || "",
       crmUrl: getProjectCrmUrl(project?.id),
     };
   }
@@ -477,8 +508,6 @@ function Calendar({
     });
   }
 
-  console.log({ rectificationProject });
-
   const taskTypes = [
     { tasks: urgent, title: "Urgent" },
     { tasks: as_soon_as_possible, title: "As soon as possible" },
@@ -514,9 +543,6 @@ function Calendar({
     const date = moment(endDate); // Parse it into a Moment object
     date.subtract(1, "days");
     const end = date.format("YYYY-MM-DD");
-    console.log({ args });
-    console.log({ end });
-
     let dateArray = dateRange(start, end);
     let diffDates = dateArray[1];
     let updatedDates = dateArray[0];
@@ -731,23 +757,11 @@ function Calendar({
 
   const renderTimelineEventContent = React.useCallback((eventData) => {
     const event = eventData.original || {};
-    const cet = event.estimated_time_budget;
-    const hasCet = cet !== undefined && cet !== null && cet !== "";
-    const title = eventData.title || "Untitled project";
+    const jobNumber = event.job_number || "";
 
     return (
-      <div
-        className="calendar-event-content"
-        title={`${title}${hasCet ? ` · CET ${cet}` : ""}`}
-      >
-        <span
-          className="calendar-event-content__accent"
-          style={{ backgroundColor: event.accent_color || "#2563eb" }}
-        />
-        <span className="calendar-event-content__title">{title}</span>
-        {hasCet && (
-          <span className="calendar-event-content__meta">CET {cet}</span>
-        )}
+      <div className="calendar-event-content" title={jobNumber}>
+        <span className="calendar-event-content__title">{jobNumber}</span>
       </div>
     );
   }, []);
@@ -843,8 +857,6 @@ function Calendar({
     0
   );
 
-  console.log({ projects });
-
   return (
     <>
       <Box sx={{ height: "100%", overflow: "hidden", bgcolor: "#f8f8f8" }}>
@@ -855,9 +867,11 @@ function Calendar({
               height: "100%",
               minHeight: 0,
               minWidth: 0,
-              overflow: "auto",
+              overflow: "hidden",
               boxSizing: "border-box",
               padding: "10px",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             <Box
@@ -865,6 +879,7 @@ function Calendar({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                flex: "0 0 auto",
               }}
             >
               <div
@@ -897,33 +912,28 @@ function Calendar({
               </Tooltip>
               <ViewToggle view={view} setView={setView} />
             </Box>
-            <Eventcalendar
-              themeVariant="light"
-              view={{
-                timeline: {
-                  type: view,
-                  eventList: true,
-                  // Render three months in the month view so users can scroll
-                  // horizontally through months instead of jumping/launching to a new month.
-                  ...(view === "month" && { size: 3, columnWidth: "small" }),
-                },
-              }}
-              colors={myColors}
-              invalid={blockedProjects}
-              data={myEvents}
-              resources={myResources}
-              dragToMove={true}
-              externalDrop={true}
-              eventOverlap={false}
-              onEventCreate={onEventCreate}
-              dragToResize={true}
-              onEventUpdated={onEventUpdated}
-              renderScheduleEventContent={renderTimelineEventContent}
-              clickToCreate={false}
-              dragToCreate={false}
-              showEventTooltip={false}
-              onEventClick={onEventHoverIn}
-            />
+            <Box className="calendar-shell">
+              <Eventcalendar
+                themeVariant="light"
+                view={calendarView}
+                colors={myColors}
+                invalid={blockedProjects}
+                data={myEvents}
+                resources={myResources}
+                dragToMove={true}
+                externalDrop={true}
+                eventOverlap={false}
+                onEventCreate={onEventCreate}
+                dragToResize={true}
+                onEventUpdated={onEventUpdated}
+                renderScheduleEventContent={renderTimelineEventContent}
+                clickToCreate={false}
+                dragToCreate={false}
+                showEventTooltip={false}
+                onEventClick={onEventHoverIn}
+                onPageLoading={handlePageLoading}
+              />
+            </Box>
           </Grid>
           <Grid
             xs={3}

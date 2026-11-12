@@ -1,12 +1,10 @@
 import {
 	Box,
-	Card,
 	CircularProgress,
-	Grid,
 	LinearProgress,
 	Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import Calendar from "./components/Calendar";
 const ZOHO = window.ZOHO;
@@ -53,23 +51,32 @@ async function getZohoOrgVariable(name) {
 
 const LOADING_SOURCE_TOTAL = 7;
 
-async function getAllJobAllocations(onProgress = () => {}) {
+const JOB_ALLOCATION_PAGE_SIZE = 2000;
+
+async function getJobAllocationsForRange(
+	startDate,
+	endDate,
+	onProgress = () => {}
+) {
 	const allocations = [];
-	let page = 1;
+	let offset = 0;
 	let moreRecords = true;
 
 	while (moreRecords) {
-		const response = await ZOHO.CRM.API.getAllRecords({
-			Entity: "Job_Allocations",
-			sort_order: "asc",
-			per_page: 200,
-			page,
+		const response = await ZOHO.CRM.API.coql({
+			select_query:
+				"select id,Start_Date,End_Date,Projects,Projects.Job_Number as Job_Number,Contractor," +
+				"Color_Code,Project_Summary,Current_Estimated_Time_Budget," +
+				`Excluded_Dates,Type from Job_Allocations where ((Start_Date <= '${endDate}') and (End_Date >= '${startDate}')) ` +
+				`order by Start_Date asc limit ${offset}, ${JOB_ALLOCATION_PAGE_SIZE}`,
 		});
 		const pageRecords = response?.data || [];
 		allocations.push(...pageRecords);
 		onProgress(allocations.length);
-		moreRecords = Boolean(response?.info?.more_records) && pageRecords.length > 0;
-		page += 1;
+		moreRecords =
+			Boolean(response?.info?.more_records) &&
+			pageRecords.length === JOB_ALLOCATION_PAGE_SIZE;
+		offset += JOB_ALLOCATION_PAGE_SIZE;
 	}
 
 	return allocations;
@@ -102,15 +109,12 @@ async function getAllProjectsForSearch(onProgress = () => {}) {
 }
 
 function App() {
-	const [view, setView] = useState("month");
 	const [projects, setProjects] = useState([]);
 	const [painters, setPainters] = useState([]);
-	const [zohoLoaded, setZohoLoaded] = useState(false);
 	const [events, setEvents] = useState([]);
 	const [inProgress, setInProgress] = useState([]);
 	const [blockedProjects, setBlockedProjects] = useState([]);
-	const [fetchDataLoading, setFetchDataLoading] = useState(true);
-	const [rectification, setRectification] = useState([])
+	const [rectification, setRectification] = useState([]);
 	const [contractorOrder, setContractorOrder] = useState([]);
 	const [searchableProjects, setSearchableProjects] = useState([]);
 	const [searchProjectsLoading, setSearchProjectsLoading] = useState(true);
@@ -122,11 +126,9 @@ function App() {
 		completedSources: [],
 		totalSources: LOADING_SOURCE_TOTAL,
 	});
+	const visibleRangeRequestRef = useRef(0);
+	const currentVisibleRangeRef = useRef("");
 
-	//form submitted handler for input form
-	const setFormSubmitted = () => {
-		window.location.reload();
-	};
 	const handleAllocationCreated = useCallback((allocation) => {
 		setEvents((currentEvents) => {
 			if (currentEvents.some((event) => event.id === allocation.id)) {
@@ -156,12 +158,92 @@ function App() {
 		},
 		[]
 	);
+	const markLoadingSources = useCallback((sources, label) => {
+		setLoadingProgress((current) => ({
+			...current,
+			isLoading: true,
+			label,
+			completedSources: current.completedSources.filter(
+				(source) => !sources.includes(source)
+			),
+		}));
+	}, []);
+	const handleVisibleDateRangeChange = useCallback(
+		async ({ start, end }) => {
+			if (!start || !end) return;
+
+			const rangeKey = `${start}:${end}`;
+			if (currentVisibleRangeRef.current === rangeKey) return;
+			currentVisibleRangeRef.current = rangeKey;
+			const requestId = ++visibleRangeRequestRef.current;
+			markLoadingSources(
+				["allocations", "blockedAllocations"],
+				`Loading calendar allocations for ${start} to ${end}…`
+			);
+
+			try {
+				const rangeEvents = await getJobAllocationsForRange(
+					start,
+					end,
+					(count) => {
+						if (requestId === visibleRangeRequestRef.current) {
+							updateLoadingProgress(
+								"allocations",
+								count,
+								`Loading calendar allocations for ${start} to ${end}…`
+							);
+						}
+					}
+				);
+
+				if (requestId !== visibleRangeRequestRef.current) return;
+
+				setEvents(rangeEvents);
+				const blockedRanges = rangeEvents
+					.filter((event) => event.Type === "Blocked")
+					.map((event) => ({
+						resource: event?.Contractor?.id,
+						start: event?.Start_Date,
+						end: event?.End_Date,
+					}));
+				setBlockedProjects(blockedRanges);
+				updateLoadingProgress(
+					"allocations",
+					rangeEvents.length,
+					"Calendar allocations loaded",
+					true
+				);
+				updateLoadingProgress(
+					"blockedAllocations",
+					blockedRanges.length,
+					"Contractor availability loaded",
+					true
+				);
+			} catch (error) {
+				if (requestId !== visibleRangeRequestRef.current) return;
+				console.error("Could not load calendar allocations", error);
+				setEvents([]);
+				setBlockedProjects([]);
+				updateLoadingProgress(
+					"allocations",
+					0,
+					"Calendar allocations could not be loaded",
+					true
+				);
+				updateLoadingProgress(
+					"blockedAllocations",
+					0,
+					"Calendar allocations could not be loaded",
+					true
+				);
+			}
+		},
+		[markLoadingSources, updateLoadingProgress]
+	);
 	useEffect(() => {
 		const zohoConnect = async () => {
 			ZOHO.embeddedApp.on("PageLoad", function (data) {});
-			const zohoLoaded = await ZOHO.embeddedApp
-				.init()
-				.then(() => setZohoLoaded(true));
+			await ZOHO.embeddedApp.init();
 
 			getAllProjectsForSearch((count) =>
 				updateLoadingProgress(
@@ -195,7 +277,7 @@ function App() {
 
 			let config = {
 				select_query:
-					"select Name,Project_Timing,id,Work_Summary_Sale,Account_name,Budget_time_Add_Remove,Project_Status from FP_Projects where ((((Project_Status = 'Requested') or (Project_Status != 'In Progress'))or(Project_Status = 'Rectification'))and(Job_Offer_Status = 'Not Allocated'))",
+					"select Name,Job_Number,Project_Timing,id,Work_Summary_Sale,Account_name,Budget_time_Add_Remove,Project_Status from FP_Projects where ((((Project_Status = 'Requested') or (Project_Status != 'In Progress'))or(Project_Status = 'Rectification'))and(Job_Offer_Status = 'Not Allocated'))",
 			};
 			const projectsResp = await ZOHO.CRM.API.coql(config).then(function (
 				data
@@ -212,7 +294,6 @@ function App() {
 						return 0;
 					}
 				});
-				console.log({ sortedData });
 				setProjects(sortedData);
 				updateLoadingProgress(
 					"availableProjects",
@@ -259,7 +340,7 @@ function App() {
 				Query: "Project_Status:equals:Rectification",
 			});
 
-			setRectification(rectificationData.data)
+			setRectification(rectificationData.data);
 			updateLoadingProgress(
 				"rectificationProjects",
 				rectificationData?.data?.length || 0,
@@ -272,66 +353,6 @@ function App() {
 			const orgVarResp = await getZohoOrgVariable("worksboard_org_var");
 			setContractorOrder(parseContractorOrder(extractOrgVariableValue(orgVarResp)));
 
-			const eventData = await getAllJobAllocations((count) =>
-				updateLoadingProgress(
-					"allocations",
-					count,
-					"Loading calendar allocations…"
-				)
-			);
-			updateLoadingProgress(
-				"allocations",
-				eventData.length,
-				"Calendar allocations loaded",
-				true
-			);
-
-			const blockedProjectsTemp = await ZOHO.CRM.API.searchRecord({
-				Entity: "Job_Allocations",
-				Type: "criteria",
-				Query: "Type:equals:Blocked",
-			});
-
-			let test = blockedProjectsTemp?.data?.map((el, index) => {
-				let data = {
-					resource: el?.Contractor?.id,
-					start: el?.Start_Date,
-					end: el?.End_Date,
-				};
-				return data;
-			});
-
-			console.log({test});
-
-			setBlockedProjects(test);
-			updateLoadingProgress(
-				"blockedAllocations",
-				test?.length || 0,
-				"Contractor availability loaded",
-				true
-			);
-
-			let zohoEvents = [];
-
-			// const start_time=blockedProjects[0].Start_Date
-			// const end_time = blockedProjects[0].End_Date
-			// const id =blockedProjects[0].Contractor.id
-
-			// config = {
-			//   select_query:
-			//     "select Projects,Contractor,Start_Date,End_Date,Color_Code from Job_Allocations where Name	is not null",
-			// };
-			// const eventResp = await ZOHO.CRM.API.coql(config).then(function (data) {
-			//   if(data.data.length > 0){
-			//     setEvents(data.data);
-			//   }
-			// });
-
-			eventData.forEach((event) => {
-				zohoEvents.push(event);
-			});
-			setEvents(zohoEvents);
-			setFetchDataLoading(false);
 		};
 		zohoConnect();
 	}, [updateLoadingProgress]);
@@ -369,31 +390,21 @@ function App() {
 
 	return (
 		<Box sx={{ height: "100vh", overflowY: "hidden" }}>
-			{/* {!fetchDataLoading ? (
-				<Calendar
-					contractors={painters}
-					events={events}
-					projects={projects}
-					inProgress={inProgress}
-					blockedProjects={blockedProjects}
-				/>
-			) : (
-				<Typography>Loading...</Typography>
-			)} */}
 			<Calendar
-					contractors={painters}
-					contractorOrder={contractorOrder}
-					events={events}
-					projects={projects}
-					inProgress={inProgress}
-					blockedProjects={blockedProjects}
-					rectification={rectification}
-					searchableProjects={searchableProjects}
-					searchProjectsLoading={searchProjectsLoading}
-					searchProjectsError={searchProjectsError}
-					loadingProgress={loadingProgress}
-					onAllocationCreated={handleAllocationCreated}
-				/>
+				contractors={painters}
+				contractorOrder={contractorOrder}
+				events={events}
+				projects={projects}
+				inProgress={inProgress}
+				blockedProjects={blockedProjects}
+				rectification={rectification}
+				searchableProjects={searchableProjects}
+				searchProjectsLoading={searchProjectsLoading}
+				searchProjectsError={searchProjectsError}
+				loadingProgress={loadingProgress}
+				onAllocationCreated={handleAllocationCreated}
+				onVisibleDateRangeChange={handleVisibleDateRangeChange}
+			/>
 		</Box>
 	);
 }
