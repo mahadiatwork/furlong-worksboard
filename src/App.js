@@ -1,5 +1,5 @@
 import { Box, Card, CircularProgress, Grid, Typography } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import Calendar from "./components/Calendar";
 const ZOHO = window.ZOHO;
@@ -44,6 +44,27 @@ async function getZohoOrgVariable(name) {
 	return "";
 }
 
+async function getAllJobAllocations() {
+	const allocations = [];
+	let page = 1;
+	let moreRecords = true;
+
+	while (moreRecords) {
+		const response = await ZOHO.CRM.API.getAllRecords({
+			Entity: "Job_Allocations",
+			sort_order: "asc",
+			per_page: 200,
+			page,
+		});
+		const pageRecords = response?.data || [];
+		allocations.push(...pageRecords);
+		moreRecords = Boolean(response?.info?.more_records) && pageRecords.length > 0;
+		page += 1;
+	}
+
+	return allocations;
+}
+
 function App() {
 	const [view, setView] = useState("month");
 	const [projects, setProjects] = useState([]);
@@ -60,6 +81,14 @@ function App() {
 	const setFormSubmitted = () => {
 		window.location.reload();
 	};
+	const handleAllocationCreated = useCallback((allocation) => {
+		setEvents((currentEvents) => {
+			if (currentEvents.some((event) => event.id === allocation.id)) {
+				return currentEvents;
+			}
+			return [...currentEvents, allocation];
+		});
+	}, []);
 	useEffect(() => {
 		const zohoConnect = async () => {
 			ZOHO.embeddedApp.on("PageLoad", function (data) {});
@@ -122,12 +151,7 @@ function App() {
 			const orgVarResp = await getZohoOrgVariable("worksboard_org_var");
 			setContractorOrder(parseContractorOrder(extractOrgVariableValue(orgVarResp)));
 
-			const eventData = await ZOHO.CRM.API.getAllRecords({
-				Entity: "Job_Allocations",
-				sort_order: "asc",
-				per_page: 100,
-				page: 1,
-			});
+			const eventData = await getAllJobAllocations();
 
 			const blockedProjectsTemp = await ZOHO.CRM.API.searchRecord({
 				Entity: "Job_Allocations",
@@ -149,7 +173,7 @@ function App() {
 			setBlockedProjects(test);
 
 			let zohoEvents = [];
-      
+
 			// const start_time=blockedProjects[0].Start_Date
 			// const end_time = blockedProjects[0].End_Date
 			// const id =blockedProjects[0].Contractor.id
@@ -164,7 +188,7 @@ function App() {
 			//   }
 			// });
 
-			eventData.data.forEach((event) => {
+			eventData.forEach((event) => {
 				zohoEvents.push(event);
 			});
 			setEvents(zohoEvents);
@@ -211,6 +235,7 @@ function App() {
 					inProgress={inProgress}
 					blockedProjects={blockedProjects}
 					rectification={rectification}
+					onAllocationCreated={handleAllocationCreated}
 				/>
 		</Box>
 	);

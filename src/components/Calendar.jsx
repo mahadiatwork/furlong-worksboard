@@ -28,6 +28,7 @@ import {
 import moment from "moment";
 import CloseIcon from "@mui/icons-material/Close";
 import SettingsIcon from "@mui/icons-material/Settings";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
@@ -41,6 +42,15 @@ import { CallMissedOutgoing } from "@mui/icons-material";
 import ViewToggle from "./ViewToggle";
 
 const ZOHO = window.ZOHO;
+const PROJECT_CRM_URL =
+  "https://crm.zoho.com/crm/org465508368/tab/CustomModule23";
+const PROJECT_CRM_PAGE_ID = "1915689000165817581";
+
+function getProjectCrmUrl(projectId) {
+  return projectId
+    ? `${PROJECT_CRM_URL}/${projectId}/page/${PROJECT_CRM_PAGE_ID}`
+    : "";
+}
 
 const modernStyle = {
   position: "absolute",
@@ -59,19 +69,25 @@ const modernStyle = {
 
 // Create a TaskAccordion component
 function TaskAccordion({ tasks, title }) {
+  const sortedTasks = [...tasks].sort((a, b) =>
+    a.displayName.localeCompare(b.displayName)
+  );
+
   return (
     tasks.length > 0 && (
-      <Accordion>
+      <Accordion disableGutters elevation={0} className="project-accordion">
         <AccordionSummary
           expandIcon={<ExpandMoreIcon />}
           aria-controls="panel1a-content"
           id="panel1a-header"
+          className="project-accordion__summary"
         >
-          <Typography>{title}</Typography>
+          <Typography className="project-accordion__title">{title}</Typography>
+          <span className="project-count">{tasks.length}</span>
         </AccordionSummary>
-        <AccordionDetails>
-          {tasks.map((task, i) => (
-            <Task key={i} data={task} />
+        <AccordionDetails className="project-accordion__details">
+          {sortedTasks.map((task) => (
+            <Task key={task.project_id} data={task} />
           ))}
         </AccordionDetails>
       </Accordion>
@@ -98,6 +114,7 @@ function Calendar({
   inProgress,
   blockedProjects,
   rectification,
+  onAllocationCreated,
 }) {
   const [start__Date, setStartDate] = useState(null);
   const [end__Date, setEndDate] = useState(null);
@@ -148,15 +165,16 @@ function Calendar({
   const saveContractorOrder = async () => {
     setSavingOrder(true);
     try {
-      const orderText = draftOrder.join("\n");
-      await ZOHO.CRM.FUNCTIONS.execute("worksboard_set_contractor_order", {
-        arguments: JSON.stringify({ order: orderText }),
+      const orderJson = JSON.stringify(draftOrder);
+      await ZOHO.CRM.CONNECTOR.invokeAPI("crm.set", {
+        apiname: "worksboard_org_var",
+        value: orderJson,
       });
       window.location.reload();
     } catch (error) {
       console.error("Failed to save contractor order", error);
       alert(
-        "Could not save contractor order. Please check the function name and permissions."
+        "Could not save contractor order. Please check access to the worksboard CRM variable."
       );
       setSavingOrder(false);
     }
@@ -206,7 +224,7 @@ function Calendar({
 
   if (events.length > 0) {
     events.forEach((event) => {
-      if (event.Projects !== null) {
+      if (event.Projects?.id) {
         console.log({ event });
         myEvents.push({
           start: event.Start_Date,
@@ -216,7 +234,7 @@ function Calendar({
           event_id: event?.id,
           color: event.Color_Code,
           project_id: event?.Projects?.id,
-          Project_Summary: event.Scope_Of_Work || "",
+          Project_Summary: event.Project_Summary || event.Scope_Of_Work || "",
           estimated_time_budget: event.Current_Estimated_Time_Budget || 0,
           Excluded_Dates: event.Excluded_Dates,
         });
@@ -253,8 +271,9 @@ function Calendar({
         Project_Name: event?.event?.title,
         Color_Code: event?.event?.color,
         Type: isBlocked ? "Blocked" : "Attendance",
-        Current_Estimated_Time_Budget:
-          event?.event?.estimated_time_budget.toString(),
+        Current_Estimated_Time_Budget: String(
+          event?.event?.estimated_time_budget || ""
+        ),
         Project_Summary: event?.event?.work_summary,
       };
 
@@ -265,7 +284,27 @@ function Calendar({
         Trigger: ["workflow"],
       });
 
-      if (jobAllocationResponse.data[0].status === "success") {
+      const createdAllocation = jobAllocationResponse?.data?.[0];
+
+      if (createdAllocation?.status === "success") {
+        const allocationId = createdAllocation.details.id;
+
+        onAllocationCreated?.({
+          id: allocationId,
+          Start_Date: start_date,
+          End_Date: end_date,
+          Projects: {
+            id: event.event.project_id,
+            name: event.event.title,
+          },
+          Contractor: { id: event.event.resource },
+          Color_Code: event.event.color,
+          Project_Summary: event.event.work_summary,
+          Current_Estimated_Time_Budget:
+            event.event.estimated_time_budget || 0,
+          Excluded_Dates: null,
+        });
+
         toast({ message: "Project Allocated Successfully" });
 
         // Prepare attendance data
@@ -278,18 +317,29 @@ function Calendar({
           Project: { id: event?.event?.project_id },
           Contractor: { id: event?.event?.resource },
           Contractor_Email: contractorMail,
-          Scheduling: { id: jobAllocationResponse.data[0].details.id },
+          Scheduling: { id: allocationId },
         };
 
         // Insert Attendance record
-        await ZOHO.CRM.API.insertRecord({
-          Entity: "Project_Attendance",
-          APIData: attendanceData,
-          Trigger: ["workflow"],
-        });
-
-        // Reload the page upon successful completion
-        window.location.reload(false);
+        try {
+          const attendanceResponse = await ZOHO.CRM.API.insertRecord({
+            Entity: "Project_Attendance",
+            APIData: attendanceData,
+            Trigger: ["workflow"],
+          });
+          if (attendanceResponse?.data?.[0]?.status !== "success") {
+            throw new Error("CRM rejected the attendance record");
+          }
+        } catch (attendanceError) {
+          console.error(
+            "Allocation saved, but attendance creation failed",
+            attendanceError
+          );
+          toast({
+            message:
+              "Project allocated, but its attendance record could not be created.",
+          });
+        }
       } else {
         toast({ message: "There is something wrong" });
       }
@@ -297,7 +347,7 @@ function Calendar({
       console.error("Error during event creation:", error);
       toast({ message: "An error occurred while creating the event." });
     }
-  }, []);
+  }, [onAllocationCreated]);
 
   const now = new Date();
 
@@ -324,7 +374,8 @@ function Calendar({
       Project_Status: project?.Project_Status || "",
       start: moment(now).format("YYYY-MM-DD"),
       end: moment(now).format("YYYY-MM-DD"),
-      projectName: project.Account_name,
+      displayName: project?.Name || project?.Account_name || "Unnamed project",
+      crmUrl: getProjectCrmUrl(project?.id),
     };
   }
 
@@ -732,7 +783,14 @@ function Calendar({
     setDeleteDialog(false);
   };
   const SortedActiveProjects = activeProjects.sort((a, b) =>
-    a.title.localeCompare(b.name)
+    a.displayName.localeCompare(b.displayName)
+  );
+  const sortedRectificationProjects = rectificationProject.sort((a, b) =>
+    a.displayName.localeCompare(b.displayName)
+  );
+  const requestedProjectCount = taskTypes.reduce(
+    (count, taskType) => count + taskType.tasks.length,
+    0
   );
 
   console.log({ projects });
@@ -788,13 +846,14 @@ function Calendar({
           </Grid>
           <Grid
             xs={3}
+            className="project-sidebar"
             sx={{
               height: "100vh",
               overflowY: "scroll",
             }}
           >
             {!eventSelected && (
-              <Box sx={{ padding: "10px" }}>
+              <Box className="project-search">
                 <TextField
                   fullWidth
                   label="Search projects"
@@ -806,18 +865,18 @@ function Calendar({
               </Box>
             )}
             {!eventSelected && normalizedSearchQuery !== "" && (
-              <Box sx={{ padding: "10px 0px" }}>
+              <Box className="project-section">
                 <Typography
-                  variant="h5"
-                  align="center"
-                  sx={{ padding: "10px 0px" }}
+                  component="h2"
+                  className="project-section__title"
                 >
                   Search Results
+                  <span className="project-count">{searchResults.length}</span>
                 </Typography>
                 {searchResults.length > 0 ? (
-                  <div>
-                    {searchResults.map((task, i) => (
-                      <Task key={i} data={task} />
+                  <div className="project-list">
+                    {searchResults.map((task) => (
+                      <Task key={task.project_id} data={task} />
                     ))}
                   </div>
                 ) : (
@@ -828,29 +887,31 @@ function Calendar({
               </Box>
             )}
             {!eventSelected && rectificationProject.length > 0 && (
-              <div>
+              <section className="project-section">
                 <Typography
-                  sx={{ margin: "10px 0px" }}
-                  align="center"
-                  variant="h5"
+                  component="h2"
+                  className="project-section__title"
                 >
                   Rectification
+                  <span className="project-count">
+                    {rectificationProject.length}
+                  </span>
                 </Typography>
-                <div>
-                  {rectificationProject.map((task, i) => (
-                    <Task key={i} data={task} />
+                <div className="project-list">
+                  {sortedRectificationProjects.map((task) => (
+                    <Task key={task.project_id} data={task} />
                   ))}
                 </div>
-              </div>
+              </section>
             )}
             {!eventSelected && (
-              <Box sx={{ padding: "10px 0px" }}>
+              <Box className="project-section">
                 <Typography
-                  variant="h5"
-                  align="center"
-                  sx={{ padding: "20px 0px" }}
+                  component="h2"
+                  className="project-section__title"
                 >
                   Projects Requested
+                  <span className="project-count">{requestedProjectCount}</span>
                 </Typography>
                 {taskTypes.map((taskType, index) => (
                   <TaskAccordion
@@ -862,36 +923,38 @@ function Calendar({
               </Box>
             )}
             {!eventSelected && blockProject.length > 0 && (
-              <div>
+              <section className="project-section">
                 <Typography
-                  sx={{ margin: "10px 0px" }}
-                  align="center"
-                  variant="h5"
+                  component="h2"
+                  className="project-section__title"
                 >
                   Contractor Unavailable
+                  <span className="project-count">{blockProject.length}</span>
                 </Typography>
-                <div>
-                  {blockProject.map((task, i) => (
-                    <Task key={i} data={task} />
+                <div className="project-list">
+                  {blockProject.map((task) => (
+                    <Task key={task.project_id} data={task} />
                   ))}
                 </div>
-              </div>
+              </section>
             )}
             {!eventSelected && (
-              <div>
+              <section className="project-section">
                 <Typography
-                  sx={{ margin: "10px 0px" }}
-                  align="center"
-                  variant="h5"
+                  component="h2"
+                  className="project-section__title"
                 >
                   In Progress
+                  <span className="project-count">
+                    {SortedActiveProjects.length}
+                  </span>
                 </Typography>
-                <div>
-                  {SortedActiveProjects.map((task, i) => (
-                    <Task key={i} data={task} />
+                <div className="project-list">
+                  {SortedActiveProjects.map((task) => (
+                    <Task key={task.project_id} data={task} />
                   ))}
                 </div>
-              </div>
+              </section>
             )}
           </Grid>
         </Grid>
@@ -1070,31 +1133,34 @@ function Task(props) {
 
   // Determine if the project is blocked
   const isBlockedProject = props.data.title === "Blocked Project";
+  const statusClass = isBlockedProject
+    ? "external-event-task--blocked"
+    : props.data.color === "red"
+    ? "external-event-task--rectification"
+    : props.data.color === "#4CAF50"
+    ? "external-event-task--in-progress"
+    : "external-event-task--requested";
+  const budget = props.data.estimated_time_budget || "(n/a)";
+  const label = `${props.data.displayName}: CET ${budget}`;
 
   return (
     <div
       ref={setDragElm}
-      style={{
-        background: isBlockedProject ? "salmon" : props.data.color,
-        color: isBlockedProject ? "white" : "inherit",
-      }}
-      className="external-event-task"
+      className={`external-event-task ${statusClass}`}
     >
       <Tooltip title={`${props.data.work_summary}`} placement="left-start">
-        <Button
-          sx={{
-            textTransform: "none",
-            padding: 0,
-            color: isBlockedProject ? "white" : "#000",
-            fontSize: "10px",
-          }}
+        <a
+          className="external-event-task__link"
+          href={props.data.crmUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          draggable="false"
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`Open ${props.data.displayName} in Zoho CRM`}
         >
-          {isBlockedProject
-            ? props.data.title
-            : `${props.data.projectName}: CET ${
-                props.data.estimated_time_budget || "(n/a)"
-              }`}
-        </Button>
+          <span className="external-event-task__label">{label}</span>
+          <OpenInNewIcon className="external-event-task__open-icon" />
+        </a>
       </Tooltip>
       <Draggable dragData={props.data} element={draggable} />
     </div>
