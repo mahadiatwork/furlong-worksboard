@@ -9,6 +9,7 @@ import {
   Box,
   Button,
   Card,
+  CircularProgress,
   Grid,
   IconButton,
   List,
@@ -29,6 +30,8 @@ import moment from "moment";
 import CloseIcon from "@mui/icons-material/Close";
 import SettingsIcon from "@mui/icons-material/Settings";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
@@ -114,6 +117,16 @@ function Calendar({
   inProgress,
   blockedProjects,
   rectification,
+  searchableProjects = [],
+  searchProjectsLoading = false,
+  searchProjectsError = "",
+  loadingProgress = {
+    isLoading: true,
+    label: "Loading CRM data…",
+    counts: {},
+    completedSources: [],
+    totalSources: 0,
+  },
   onAllocationCreated,
 }) {
   const [start__Date, setStartDate] = useState(null);
@@ -237,6 +250,12 @@ function Calendar({
           Project_Summary: event.Project_Summary || event.Scope_Of_Work || "",
           estimated_time_budget: event.Current_Estimated_Time_Budget || 0,
           Excluded_Dates: event.Excluded_Dates,
+          accent_color: event.Color_Code || "#2563eb",
+          allocation_type: event.Type || "Attendance",
+          cssClass:
+            event.Type === "Blocked"
+              ? "worksboard-calendar-event worksboard-calendar-event--blocked"
+              : "worksboard-calendar-event",
         });
       }
     });
@@ -405,7 +424,9 @@ function Calendar({
   const searchResults = (() => {
     if (!normalizedSearchQuery) return [];
 
-    const allProjects = [...projects, ...rectification, ...inProgress];
+    const allProjects = searchableProjects.length
+      ? searchableProjects
+      : [...projects, ...rectification, ...inProgress];
     const seen = new Set();
     const matches = [];
 
@@ -434,7 +455,9 @@ function Calendar({
       }
     });
 
-    return matches;
+    return matches.sort((a, b) =>
+      a.displayName.localeCompare(b.displayName)
+    );
   })();
 
   if (notCompletedProjects.length > 0) {
@@ -706,6 +729,29 @@ function Calendar({
     ];
   }, []);
 
+  const renderTimelineEventContent = React.useCallback((eventData) => {
+    const event = eventData.original || {};
+    const cet = event.estimated_time_budget;
+    const hasCet = cet !== undefined && cet !== null && cet !== "";
+    const title = eventData.title || "Untitled project";
+
+    return (
+      <div
+        className="calendar-event-content"
+        title={`${title}${hasCet ? ` · CET ${cet}` : ""}`}
+      >
+        <span
+          className="calendar-event-content__accent"
+          style={{ backgroundColor: event.accent_color || "#2563eb" }}
+        />
+        <span className="calendar-event-content__title">{title}</span>
+        {hasCet && (
+          <span className="calendar-event-content__meta">CET {cet}</span>
+        )}
+      </div>
+    );
+  }, []);
+
   // Contractor order is now controlled by the worksboard_org_var org variable
   const [isOpen, setOpen] = React.useState(false);
   const [anchor, setAnchor] = React.useState(null);
@@ -792,14 +838,28 @@ function Calendar({
     (count, taskType) => count + taskType.tasks.length,
     0
   );
+  const fetchedRecordCount = Object.values(loadingProgress.counts || {}).reduce(
+    (total, count) => total + count,
+    0
+  );
 
   console.log({ projects });
 
   return (
     <>
-      <Box sx={{ height: "100vh", overflowY: "scroll", bgcolor: "#f8f8f8" }}>
-        <Grid container>
-          <Grid xs={9} sx={{ padding: "10px" }}>
+      <Box sx={{ height: "100%", overflow: "hidden", bgcolor: "#f8f8f8" }}>
+        <Grid container sx={{ height: "100%", minHeight: 0 }}>
+          <Grid
+            xs={9}
+            sx={{
+              height: "100%",
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "auto",
+              boxSizing: "border-box",
+              padding: "10px",
+            }}
+          >
             <Box
               sx={{
                 display: "flex",
@@ -807,8 +867,28 @@ function Calendar({
                 alignItems: "center",
               }}
             >
-              <div style={{ flexGrow: 1 }}>
-                {/* This is a placeholder div to take up space and push the toggle to the right */}
+              <div
+                className={`crm-loading-indicator ${
+                  loadingProgress.isLoading
+                    ? "crm-loading-indicator--active"
+                    : "crm-loading-indicator--complete"
+                }`}
+              >
+                <span className="crm-loading-indicator__icon">
+                  {loadingProgress.isLoading ? (
+                    <CircularProgress size={15} thickness={5} />
+                  ) : (
+                    <CheckRoundedIcon />
+                  )}
+                </span>
+                <span className="crm-loading-indicator__copy">
+                  <strong>{loadingProgress.label}</strong>
+                  <small>
+                    {fetchedRecordCount.toLocaleString()} records fetched ·{" "}
+                    {loadingProgress.completedSources?.length || 0}/
+                    {loadingProgress.totalSources || 0} datasets
+                  </small>
+                </span>
               </div>
               <Tooltip title="Change contractor order">
                 <IconButton onClick={openOrderModal} size="small">
@@ -838,6 +918,7 @@ function Calendar({
               onEventCreate={onEventCreate}
               dragToResize={true}
               onEventUpdated={onEventUpdated}
+              renderScheduleEventContent={renderTimelineEventContent}
               clickToCreate={false}
               dragToCreate={false}
               showEventTooltip={false}
@@ -848,8 +929,14 @@ function Calendar({
             xs={3}
             className="project-sidebar"
             sx={{
-              height: "100vh",
-              overflowY: "scroll",
+              height: "100%",
+              minHeight: 0,
+              minWidth: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              boxSizing: "border-box",
+              overscrollBehavior: "contain",
+              scrollbarGutter: "stable",
             }}
           >
             {!eventSelected && (
@@ -873,17 +960,28 @@ function Calendar({
                   Search Results
                   <span className="project-count">{searchResults.length}</span>
                 </Typography>
+                {searchProjectsLoading && (
+                  <div className="project-search-status">
+                    <CircularProgress size={15} thickness={5} />
+                    <span>Searching the complete CRM project catalogue…</span>
+                  </div>
+                )}
+                {searchProjectsError && (
+                  <Typography className="project-search-error">
+                    {searchProjectsError}
+                  </Typography>
+                )}
                 {searchResults.length > 0 ? (
                   <div className="project-list">
                     {searchResults.map((task) => (
                       <Task key={task.project_id} data={task} />
                     ))}
                   </div>
-                ) : (
+                ) : !searchProjectsLoading ? (
                   <Typography align="center" variant="body2">
                     No projects found
                   </Typography>
-                )}
+                ) : null}
               </Box>
             )}
             {!eventSelected && rectificationProject.length > 0 && (
@@ -967,66 +1065,103 @@ function Calendar({
         <Modal
           open={eventSelected}
           onClose={() => setEventSelected(false)}
-          aria-labelledby="modal-modal-title"
-          aria-describedby="modal-modal-description"
+          aria-labelledby="event-details-title"
+          aria-describedby="event-details-summary"
         >
-          <Box sx={modernStyle}>
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              mb={2}
-            >
-              <Typography
-                id="modal-modal-title"
-                variant="h6"
-                component="h2"
-                fontWeight="bold"
-              >
-                Event Details
-              </Typography>
+          <Box className="event-details-modal">
+            <header className="event-details-modal__header">
+              <Box>
+                <Typography className="event-details-modal__eyebrow">
+                  Project allocation
+                </Typography>
+                <Typography
+                  id="event-details-title"
+                  component="h2"
+                  className="event-details-modal__title"
+                >
+                  Event details
+                </Typography>
+              </Box>
               <IconButton
                 onClick={() => setEventSelected(false)}
-                sx={{ p: 0.5 }}
+                className="event-details-modal__close"
+                aria-label="Close event details"
               >
                 <CloseIcon />
               </IconButton>
-            </Box>
+            </header>
 
-            <Typography variant="body1">
-              <strong>Name:</strong> {popupdata?.title}
-            </Typography>
-            <Typography variant="body1">
-              <strong>Project Summary:</strong>{" "}
-              {popupdata?.Project_Summary || popupdata?.Scope_Of_Work}
-            </Typography>
-            <Typography variant="body1">
-              <strong>CET:</strong> {popupdata?.estimated_time_budget}
-            </Typography>
+            <div className="event-details-modal__body">
+              <div className="event-detail-field">
+                <span className="event-detail-field__label">Project</span>
+                {popupdata?.project_id ? (
+                  <a
+                    className="event-detail-project-link"
+                    href={getProjectCrmUrl(popupdata.project_id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span>{popupdata?.title || "Unnamed project"}</span>
+                    <OpenInNewIcon />
+                  </a>
+                ) : (
+                  <span className="event-detail-field__value">
+                    {popupdata?.title || "Unnamed project"}
+                  </span>
+                )}
+              </div>
 
-            <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+              <div className="event-details-modal__summary">
+                <span className="event-detail-field__label">
+                  Project summary
+                </span>
+                <Typography
+                  id="event-details-summary"
+                  className="event-details-modal__summary-text"
+                >
+                  {popupdata?.Project_Summary ||
+                    popupdata?.Scope_Of_Work ||
+                    "No project summary provided."}
+                </Typography>
+              </div>
+
+              <div className="event-details-modal__metric">
+                <span className="event-details-modal__metric-label">CET</span>
+                <strong className="event-details-modal__metric-value">
+                  {popupdata?.estimated_time_budget || "(n/a)"}
+                </strong>
+                <span className="event-details-modal__metric-caption">
+                  Current estimated time
+                </span>
+              </div>
+            </div>
+
+            <footer className="event-details-modal__actions">
+              <Button
+                variant="text"
+                color="inherit"
+                onClick={() => setEventSelected(false)}
+                className="event-details-modal__cancel"
+              >
+                Cancel
+              </Button>
               <Button
                 variant="outlined"
                 color="error"
-                onClick={() => setEventSelected(false)}
+                onClick={() => handleDelete(popupdata, ZOHO)}
+                startIcon={<DeleteOutlineRoundedIcon />}
               >
-                Cancel
+                Delete all
               </Button>
               <Button
                 variant="contained"
                 color="success"
                 onClick={() => handleAccept(popupdata, ZOHO, setEventSelected)}
+                startIcon={<CheckRoundedIcon />}
               >
-                Accept All
+                Accept all
               </Button>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={() => handleDelete(popupdata, ZOHO)}
-              >
-                Delete All
-              </Button>
-            </Box>
+            </footer>
           </Box>
         </Modal>
         <Modal
@@ -1139,6 +1274,8 @@ function Task(props) {
     ? "external-event-task--rectification"
     : props.data.color === "#4CAF50"
     ? "external-event-task--in-progress"
+    : props.data.color === "#9E9E9E"
+    ? "external-event-task--completed"
     : "external-event-task--requested";
   const budget = props.data.estimated_time_budget || "(n/a)";
   const label = `${props.data.displayName}: CET ${budget}`;

@@ -1,4 +1,11 @@
-import { Box, Card, CircularProgress, Grid, Typography } from "@mui/material";
+import {
+	Box,
+	Card,
+	CircularProgress,
+	Grid,
+	LinearProgress,
+	Typography,
+} from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import Calendar from "./components/Calendar";
@@ -44,7 +51,9 @@ async function getZohoOrgVariable(name) {
 	return "";
 }
 
-async function getAllJobAllocations() {
+const LOADING_SOURCE_TOTAL = 7;
+
+async function getAllJobAllocations(onProgress = () => {}) {
 	const allocations = [];
 	let page = 1;
 	let moreRecords = true;
@@ -58,11 +67,38 @@ async function getAllJobAllocations() {
 		});
 		const pageRecords = response?.data || [];
 		allocations.push(...pageRecords);
+		onProgress(allocations.length);
 		moreRecords = Boolean(response?.info?.more_records) && pageRecords.length > 0;
 		page += 1;
 	}
 
 	return allocations;
+}
+
+async function getAllProjectsForSearch(onProgress = () => {}) {
+	const projects = [];
+	let page = 1;
+	let moreRecords = true;
+
+	while (moreRecords) {
+		const response = await ZOHO.CRM.API.getAllRecords({
+			Entity: "FP_Projects",
+			sort_order: "asc",
+			per_page: 200,
+			page,
+		});
+		const pageRecords = response?.data || [];
+		projects.push(...pageRecords);
+		onProgress(projects.length);
+		moreRecords = Boolean(response?.info?.more_records) && pageRecords.length > 0;
+		page += 1;
+	}
+
+	const uniqueProjects = new Map();
+	projects.forEach((project) => {
+		if (project?.id) uniqueProjects.set(project.id, project);
+	});
+	return [...uniqueProjects.values()];
 }
 
 function App() {
@@ -76,6 +112,16 @@ function App() {
 	const [fetchDataLoading, setFetchDataLoading] = useState(true);
 	const [rectification, setRectification] = useState([])
 	const [contractorOrder, setContractorOrder] = useState([]);
+	const [searchableProjects, setSearchableProjects] = useState([]);
+	const [searchProjectsLoading, setSearchProjectsLoading] = useState(true);
+	const [searchProjectsError, setSearchProjectsError] = useState("");
+	const [loadingProgress, setLoadingProgress] = useState({
+		isLoading: true,
+		label: "Connecting to Zoho CRM…",
+		counts: {},
+		completedSources: [],
+		totalSources: LOADING_SOURCE_TOTAL,
+	});
 
 	//form submitted handler for input form
 	const setFormSubmitted = () => {
@@ -89,12 +135,63 @@ function App() {
 			return [...currentEvents, allocation];
 		});
 	}, []);
+	const updateLoadingProgress = useCallback(
+		(source, count, label, complete = false) => {
+			setLoadingProgress((current) => {
+				const alreadyComplete = current.completedSources.includes(source);
+				const completedSources =
+					complete && !alreadyComplete
+						? [...current.completedSources, source]
+						: current.completedSources;
+				const isLoading = completedSources.length < current.totalSources;
+
+				return {
+					...current,
+					isLoading,
+					label: isLoading ? label : "CRM data is ready",
+					counts: { ...current.counts, [source]: count },
+					completedSources,
+				};
+			});
+		},
+		[]
+	);
 	useEffect(() => {
 		const zohoConnect = async () => {
 			ZOHO.embeddedApp.on("PageLoad", function (data) {});
 			const zohoLoaded = await ZOHO.embeddedApp
 				.init()
 				.then(() => setZohoLoaded(true));
+
+			getAllProjectsForSearch((count) =>
+				updateLoadingProgress(
+					"projectCatalog",
+					count,
+					"Loading the complete project catalogue…"
+				)
+			)
+				.then((allProjects) => {
+					setSearchableProjects(allProjects);
+					updateLoadingProgress(
+						"projectCatalog",
+						allProjects.length,
+						"Project catalogue loaded",
+						true
+					);
+				})
+				.catch((error) => {
+					console.error("Could not load the complete project catalogue", error);
+					setSearchProjectsError(
+						"The complete CRM project catalogue could not be loaded."
+					);
+					updateLoadingProgress(
+						"projectCatalog",
+						0,
+						"Continuing without the full project catalogue",
+						true
+					);
+				})
+				.finally(() => setSearchProjectsLoading(false));
 
 			let config = {
 				select_query:
@@ -117,6 +214,12 @@ function App() {
 				});
 				console.log({ sortedData });
 				setProjects(sortedData);
+				updateLoadingProgress(
+					"availableProjects",
+					sortedData.length,
+					"Available projects loaded",
+					true
+				);
 			});
 
 			// (project_allocation:equals:false)
@@ -129,6 +232,12 @@ function App() {
 				Query:
 					"((Contractor_Status:equals:Active)and(Employment_Type:equals:Contractor))",
 			});
+			updateLoadingProgress(
+				"contractors",
+				painterData?.data?.length || 0,
+				"Contractors loaded",
+				true
+			);
 
 			const InProgressProjectData = await ZOHO.CRM.API.searchRecord({
 				Entity: "FP_Projects",
@@ -137,6 +246,12 @@ function App() {
 			});
 
 			setInProgress(InProgressProjectData.data);
+			updateLoadingProgress(
+				"inProgressProjects",
+				InProgressProjectData?.data?.length || 0,
+				"In-progress projects loaded",
+				true
+			);
 
 			const rectificationData = await ZOHO.CRM.API.searchRecord({
 				Entity: "FP_Projects",
@@ -145,13 +260,31 @@ function App() {
 			});
 
 			setRectification(rectificationData.data)
+			updateLoadingProgress(
+				"rectificationProjects",
+				rectificationData?.data?.length || 0,
+				"Rectification projects loaded",
+				true
+			);
 
 			setPainters(painterData.data);
 
 			const orgVarResp = await getZohoOrgVariable("worksboard_org_var");
 			setContractorOrder(parseContractorOrder(extractOrgVariableValue(orgVarResp)));
 
-			const eventData = await getAllJobAllocations();
+			const eventData = await getAllJobAllocations((count) =>
+				updateLoadingProgress(
+					"allocations",
+					count,
+					"Loading calendar allocations…"
+				)
+			);
+			updateLoadingProgress(
+				"allocations",
+				eventData.length,
+				"Calendar allocations loaded",
+				true
+			);
 
 			const blockedProjectsTemp = await ZOHO.CRM.API.searchRecord({
 				Entity: "Job_Allocations",
@@ -171,6 +304,12 @@ function App() {
 			console.log({test});
 
 			setBlockedProjects(test);
+			updateLoadingProgress(
+				"blockedAllocations",
+				test?.length || 0,
+				"Contractor availability loaded",
+				true
+			);
 
 			let zohoEvents = [];
 
@@ -195,21 +334,35 @@ function App() {
 			setFetchDataLoading(false);
 		};
 		zohoConnect();
-	}, []);
+	}, [updateLoadingProgress]);
 	
+	const fetchedRecordCount = Object.values(loadingProgress.counts).reduce(
+		(total, count) => total + count,
+		0
+	);
+	const loadingPercent = Math.round(
+		(loadingProgress.completedSources.length / loadingProgress.totalSources) *
+			100
+	);
 
 	if (painters.length === 0) {
 		return (
-			<Box
-				sx={{
-					height: "100vh",
-					width: "100%",
-					display: "flex",
-					justifyContent: "center",
-					alignItems: "center",
-				}}
-			>
-				<CircularProgress />
+			<Box className="crm-loading-screen">
+				<Box className="crm-loading-screen__card">
+					<Box className="crm-loading-screen__heading">
+						<CircularProgress size={26} thickness={4.5} />
+						<Box>
+							<Typography component="h1">Loading worksboard</Typography>
+							<Typography>{loadingProgress.label}</Typography>
+						</Box>
+					</Box>
+					<LinearProgress variant="determinate" value={loadingPercent} />
+					<Typography className="crm-loading-screen__count">
+						{fetchedRecordCount.toLocaleString()} records fetched ·{" "}
+						{loadingProgress.completedSources.length}/
+						{loadingProgress.totalSources} datasets
+					</Typography>
+				</Box>
 			</Box>
 		);
 	}
@@ -235,6 +388,10 @@ function App() {
 					inProgress={inProgress}
 					blockedProjects={blockedProjects}
 					rectification={rectification}
+					searchableProjects={searchableProjects}
+					searchProjectsLoading={searchProjectsLoading}
+					searchProjectsError={searchProjectsError}
+					loadingProgress={loadingProgress}
 					onAllocationCreated={handleAllocationCreated}
 				/>
 		</Box>
