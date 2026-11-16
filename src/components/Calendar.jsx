@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "@mobiscroll/react/dist/css/mobiscroll.min.css";
 import { Eventcalendar, Draggable, toast, Popup } from "@mobiscroll/react";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -127,9 +127,7 @@ function Calendar({
   inProgress,
   blockedProjects,
   rectification,
-  searchableProjects = [],
-  searchProjectsLoading = false,
-  searchProjectsError = "",
+  onSearchProjects,
   loadingProgress = {
     isLoading: true,
     label: "Loading CRM data…",
@@ -452,44 +450,128 @@ function Calendar({
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
-  const searchResults = (() => {
+  const projectToSearchTask = (project) => {
+    const status = project.Project_Status?.toLowerCase();
+    let color = "#FFEB3B";
+    if (status === "completed") color = "#9E9E9E";
+    else if (status === "rectification") color = "red";
+    else if (status === "in progress") color = "#4CAF50";
+    return createTask(project, color);
+  };
+
+  const sortTasks = (tasks) =>
+    tasks.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  // Step 1: search only the active projects that were loaded up front.
+  const localSearchResults = (() => {
     if (!normalizedSearchQuery) return [];
 
-    const allProjects = searchableProjects.length
-      ? searchableProjects
-      : [...projects, ...rectification, ...inProgress];
     const seen = new Set();
     const matches = [];
 
-    allProjects.forEach((project) => {
+    [...projects, ...rectification, ...inProgress].forEach((project) => {
       if (!project?.id || seen.has(project.id)) return;
       if (project.Account_name === "Blocked Project") return;
 
       const accountName = (project.Account_name || "").toLowerCase();
       const workSummary = (project.Work_Summary_Sale || "").toLowerCase();
       const projectName = (project.Name || "").toLowerCase();
+      const jobNumber = String(project.Job_Number || "").toLowerCase();
 
       if (
         accountName.includes(normalizedSearchQuery) ||
         workSummary.includes(normalizedSearchQuery) ||
-        projectName.includes(normalizedSearchQuery)
+        projectName.includes(normalizedSearchQuery) ||
+        jobNumber.includes(normalizedSearchQuery)
       ) {
         seen.add(project.id);
-
-        const status = project.Project_Status?.toLowerCase();
-        let color = "#FFEB3B";
-        if (status === "completed") color = "#9E9E9E";
-        else if (status === "rectification") color = "red";
-        else if (status === "in progress") color = "#4CAF50";
-
-        matches.push(createTask(project, color));
+        matches.push(projectToSearchTask(project));
       }
     });
 
-    return matches.sort((a, b) =>
-      a.displayName.localeCompare(b.displayName)
-    );
+    return sortTasks(matches);
   })();
+
+  // Step 2: only when nothing local matches, look the term up in the CRM
+  // (by project name or job number). Results are cached per term.
+  const remoteSearchCacheRef = useRef(new Map());
+  const [remoteSearch, setRemoteSearch] = useState({
+    query: "",
+    results: [],
+    loading: false,
+    error: "",
+  });
+  const needsRemoteSearch =
+    Boolean(normalizedSearchQuery) &&
+    localSearchResults.length === 0 &&
+    Boolean(onSearchProjects);
+
+  useEffect(() => {
+    if (!needsRemoteSearch) return undefined;
+
+    const cached = remoteSearchCacheRef.current.get(normalizedSearchQuery);
+    if (cached) {
+      setRemoteSearch({
+        query: normalizedSearchQuery,
+        results: cached,
+        loading: false,
+        error: "",
+      });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setRemoteSearch({
+      query: normalizedSearchQuery,
+      results: [],
+      loading: true,
+      error: "",
+    });
+    const timer = setTimeout(async () => {
+      try {
+        const found = await onSearchProjects(normalizedSearchQuery);
+        remoteSearchCacheRef.current.set(normalizedSearchQuery, found);
+        if (!cancelled) {
+          setRemoteSearch({
+            query: normalizedSearchQuery,
+            results: found,
+            loading: false,
+            error: "",
+          });
+        }
+      } catch (error) {
+        console.error("Could not search CRM projects", error);
+        if (!cancelled) {
+          setRemoteSearch({
+            query: normalizedSearchQuery,
+            results: [],
+            loading: false,
+            error: "Projects could not be searched in the CRM.",
+          });
+        }
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [needsRemoteSearch, normalizedSearchQuery, onSearchProjects]);
+
+  const remoteIsCurrent =
+    needsRemoteSearch && remoteSearch.query === normalizedSearchQuery;
+  const searchProjectsLoading =
+    needsRemoteSearch && (!remoteIsCurrent || remoteSearch.loading);
+  const searchProjectsError = remoteIsCurrent ? remoteSearch.error : "";
+  const searchResults = needsRemoteSearch
+    ? remoteIsCurrent
+      ? sortTasks(
+          remoteSearch.results
+            .filter((p) => p?.id && p.Account_name !== "Blocked Project")
+            .map(projectToSearchTask)
+        )
+      : []
+    : localSearchResults;
 
   if (notCompletedProjects.length > 0) {
     notCompletedProjects.forEach((project) => {
@@ -973,7 +1055,7 @@ function Calendar({
                 {searchProjectsLoading && (
                   <div className="project-search-status">
                     <CircularProgress size={15} thickness={5} />
-                    <span>Searching the complete CRM project catalogue…</span>
+                    <span>Searching all CRM projects…</span>
                   </div>
                 )}
                 {searchProjectsError && (
