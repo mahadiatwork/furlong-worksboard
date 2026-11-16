@@ -5,7 +5,11 @@ import {
 	Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
-import moment from "moment";
+import {
+	createAllocationLoader,
+	fetchJobAllocations,
+	toBlockedRanges,
+} from "./allocations";
 import "./App.css";
 import Calendar from "./components/Calendar";
 const ZOHO = window.ZOHO;
@@ -52,37 +56,6 @@ async function getZohoOrgVariable(name) {
 
 const LOADING_SOURCE_TOTAL = 6;
 
-const JOB_ALLOCATION_PAGE_SIZE = 2000;
-
-async function getJobAllocationsForRange(
-	startDate,
-	endDate,
-	onProgress = () => {}
-) {
-	const allocations = [];
-	let offset = 0;
-	let moreRecords = true;
-
-	while (moreRecords) {
-		const response = await ZOHO.CRM.API.coql({
-			select_query:
-				"select id,Start_Date,End_Date,Projects,Projects.Job_Number as Job_Number,Contractor," +
-				"Color_Code,Project_Summary,Current_Estimated_Time_Budget," +
-				`Excluded_Dates,Type from Job_Allocations where ((Start_Date <= '${endDate}') and (End_Date >= '${startDate}')) ` +
-				`order by Start_Date asc limit ${offset}, ${JOB_ALLOCATION_PAGE_SIZE}`,
-		});
-		const pageRecords = response?.data || [];
-		allocations.push(...pageRecords);
-		onProgress(allocations.length);
-		moreRecords =
-			Boolean(response?.info?.more_records) &&
-			pageRecords.length === JOB_ALLOCATION_PAGE_SIZE;
-		offset += JOB_ALLOCATION_PAGE_SIZE;
-	}
-
-	return allocations;
-}
-
 const PROJECT_SEARCH_LIMIT = 50;
 
 // Looks up projects (any status) by name or job number. Only called when the
@@ -103,7 +76,6 @@ async function searchProjectsInCrm(term) {
 	return response?.data || [];
 }
 
-const monthKey = (m) => m.format("YYYY-MM");
 
 function App() {
 	const [projects, setProjects] = useState([]);
@@ -120,31 +92,27 @@ function App() {
 		completedSources: [],
 		totalSources: LOADING_SOURCE_TOTAL,
 	});
-	// Allocation cache: every allocation fetched so far (by id), plus the months
-	// already covered, so navigating back to a visited month never refetches.
-	const allocationCacheRef = useRef(new Map());
-	const fetchedMonthsRef = useRef(new Set());
-	const inFlightMonthsRef = useRef(new Set());
+	// Allocations fetched so far (by id) and the months already loaded
+	// successfully, so navigating back to a visited month never refetches.
+	const allocationLoaderRef = useRef(
+		createAllocationLoader((start, end, onProgress) =>
+			fetchJobAllocations(ZOHO, start, end, onProgress)
+		)
+	);
 	const pendingRangeRequestsRef = useRef(0);
+	const lastRequestedRangeRef = useRef(null);
+	const [allocationsError, setAllocationsError] = useState("");
 
 	const syncEventsFromCache = useCallback(() => {
-		const all = [...allocationCacheRef.current.values()];
+		const all = allocationLoaderRef.current.getAll();
 		setEvents(all);
-		setBlockedProjects(
-			all
-				.filter((event) => event.Type === "Blocked")
-				.map((event) => ({
-					resource: event?.Contractor?.id,
-					start: event?.Start_Date,
-					end: event?.End_Date,
-				}))
-		);
+		setBlockedProjects(toBlockedRanges(all));
 	}, []);
 
 	const handleAllocationCreated = useCallback(
 		(allocation) => {
 			if (!allocation?.id) return;
-			allocationCacheRef.current.set(allocation.id, allocation);
+			allocationLoaderRef.current.add(allocation);
 			syncEventsFromCache();
 		},
 		[syncEventsFromCache]
@@ -183,93 +151,56 @@ function App() {
 	const handleVisibleDateRangeChange = useCallback(
 		async ({ start, end }) => {
 			if (!start || !end) return;
+			lastRequestedRangeRef.current = { start, end };
 
-			// Work out which whole months in view have not been fetched yet.
-			const missingMonths = [];
-			const cursor = moment(start, "YYYY-MM-DD").startOf("month");
-			const lastMonth = moment(end, "YYYY-MM-DD").startOf("month");
-			while (cursor.isSameOrBefore(lastMonth)) {
-				const key = monthKey(cursor);
-				if (
-					!fetchedMonthsRef.current.has(key) &&
-					!inFlightMonthsRef.current.has(key)
-				) {
-					missingMonths.push(cursor.clone());
-				}
-				cursor.add(1, "month");
-			}
-			if (missingMonths.length === 0) return;
-
-			// Fetch each contiguous run of missing months with a single query.
-			const runs = [];
-			missingMonths.forEach((m) => {
-				const run = runs[runs.length - 1];
-				if (run && run[run.length - 1].clone().add(1, "month").isSame(m)) {
-					run.push(m);
-				} else {
-					runs.push([m]);
-				}
-			});
-
-			const label = (a, b) => `Loading calendar allocations for ${a} to ${b}…`;
-			await Promise.all(
-				runs.map(async (run) => {
-					const keys = run.map(monthKey);
-					const runStart = run[0].format("YYYY-MM-DD");
-					const runEnd = run[run.length - 1]
-						.clone()
-						.endOf("month")
-						.format("YYYY-MM-DD");
-					keys.forEach((k) => inFlightMonthsRef.current.add(k));
-					pendingRangeRequestsRef.current += 1;
-					markLoadingSources(
-						["allocations", "blockedAllocations"],
-						label(runStart, runEnd)
+			const label = `Loading calendar allocations for ${start} to ${end}…`;
+			markLoadingSources(["allocations", "blockedAllocations"], label);
+			pendingRangeRequestsRef.current += 1;
+			try {
+				const { fetched } = await allocationLoaderRef.current.load(
+					start,
+					end,
+					(count) =>
+						updateLoadingProgress(
+							"allocations",
+							allocationLoaderRef.current.getAll().length + count,
+							label
+						)
+				);
+				setAllocationsError("");
+				if (fetched) syncEventsFromCache();
+			} catch (error) {
+				console.error("Could not load calendar allocations", error);
+				setAllocationsError(
+					error?.message || "Calendar allocations could not be loaded."
+				);
+				syncEventsFromCache();
+			} finally {
+				pendingRangeRequestsRef.current -= 1;
+				if (pendingRangeRequestsRef.current === 0) {
+					const cached = allocationLoaderRef.current.getAll();
+					updateLoadingProgress(
+						"allocations",
+						cached.length,
+						"Calendar allocations loaded",
+						true
 					);
-
-					try {
-						const rangeEvents = await getJobAllocationsForRange(
-							runStart,
-							runEnd,
-							(count) =>
-								updateLoadingProgress(
-									"allocations",
-									allocationCacheRef.current.size + count,
-									label(runStart, runEnd)
-								)
-						);
-						rangeEvents.forEach((event) => {
-							if (event?.id) allocationCacheRef.current.set(event.id, event);
-						});
-						keys.forEach((k) => fetchedMonthsRef.current.add(k));
-						syncEventsFromCache();
-					} catch (error) {
-						// Months stay unmarked so they are retried on the next navigation.
-						console.error("Could not load calendar allocations", error);
-					} finally {
-						keys.forEach((k) => inFlightMonthsRef.current.delete(k));
-						pendingRangeRequestsRef.current -= 1;
-						if (pendingRangeRequestsRef.current === 0) {
-							const cached = [...allocationCacheRef.current.values()];
-							updateLoadingProgress(
-								"allocations",
-								cached.length,
-								"Calendar allocations loaded",
-								true
-							);
-							updateLoadingProgress(
-								"blockedAllocations",
-								cached.filter((e) => e.Type === "Blocked").length,
-								"Contractor availability loaded",
-								true
-							);
-						}
-					}
-				})
-			);
+					updateLoadingProgress(
+						"blockedAllocations",
+						toBlockedRanges(cached).length,
+						"Contractor availability loaded",
+						true
+					);
+				}
+			}
 		},
 		[markLoadingSources, updateLoadingProgress, syncEventsFromCache]
 	);
+	const retryAllocations = useCallback(() => {
+		if (lastRequestedRangeRef.current) {
+			handleVisibleDateRangeChange(lastRequestedRangeRef.current);
+		}
+	}, [handleVisibleDateRangeChange]);
 	useEffect(() => {
 		const zohoConnect = async () => {
 			ZOHO.embeddedApp.on("PageLoad", function (data) {});
@@ -402,6 +333,8 @@ function App() {
 				loadingProgress={loadingProgress}
 				onAllocationCreated={handleAllocationCreated}
 				onVisibleDateRangeChange={handleVisibleDateRangeChange}
+				allocationsError={allocationsError}
+				onRetryAllocations={retryAllocations}
 			/>
 		</Box>
 	);

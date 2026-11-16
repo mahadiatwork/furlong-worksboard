@@ -38,6 +38,7 @@ import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterMoment } from "@mui/x-date-pickers/AdapterMoment";
 import { handleAccept, handleDelete, handleUpdate, sortDates } from "./helpingFunctions";
 import dayjs from "dayjs";
+import { allocationToCalendarEvent } from "../allocations";
 import ExcludeDates from "./ExcludeDates";
 import DeleteDialog from "./DeleteDialog";
 import { useMemo } from "react";
@@ -55,15 +56,6 @@ function getProjectCrmUrl(projectId) {
     : "";
 }
 
-function getAllocationJobNumber(allocation) {
-  return (
-    allocation?.job_number ||
-    allocation?.Job_Number ||
-    allocation?.["Projects.Job_Number"] ||
-    allocation?.Projects?.Job_Number ||
-    ""
-  );
-}
 
 const modernStyle = {
   position: "absolute",
@@ -137,6 +129,8 @@ function Calendar({
   },
   onAllocationCreated,
   onVisibleDateRangeChange,
+  allocationsError = "",
+  onRetryAllocations,
 }) {
   const [start__Date, setStartDate] = useState(null);
   const [end__Date, setEndDate] = useState(null);
@@ -263,30 +257,10 @@ function Calendar({
     });
   }
 
-  if (events.length > 0) {
-    events.forEach((event) => {
-      if (event.Projects?.id) {
-        myEvents.push({
-          start: event.Start_Date,
-          end: moment(event.End_Date).format("YYYY-MM-DD"),
-          title: event.Projects.name || "",
-          resource: event?.Contractor?.id,
-          event_id: event?.id,
-          color: event.Color_Code,
-          project_id: event?.Projects?.id,
-          job_number: getAllocationJobNumber(event),
-          Project_Summary: event.Project_Summary || event.Scope_Of_Work || "",
-          estimated_time_budget: event.Current_Estimated_Time_Budget || 0,
-          Excluded_Dates: event.Excluded_Dates,
-          allocation_type: event.Type || "Attendance",
-          cssClass:
-            event.Type === "Blocked"
-              ? "worksboard-calendar-event worksboard-calendar-event--blocked"
-              : "worksboard-calendar-event",
-        });
-      }
-    });
-  }
+  events.forEach((event) => {
+    const calendarEvent = allocationToCalendarEvent(event);
+    if (calendarEvent) myEvents.push(calendarEvent);
+  });
 
   let myEventsWithExclusions = [];
 
@@ -350,6 +324,7 @@ function Calendar({
             event.event.estimated_time_budget || 0,
           job_number: event.event.job_number || "",
           Excluded_Dates: null,
+          Type: isBlocked ? "Blocked" : "Attendance",
         });
 
         toast({ message: "Project Allocated Successfully" });
@@ -987,6 +962,30 @@ function Calendar({
                   </small>
                 </span>
               </div>
+              {allocationsError && (
+                <Box
+                  role="alert"
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: "#fdecea",
+                    color: "#b71c1c",
+                    fontSize: 13,
+                  }}
+                >
+                  <span>
+                    Calendar allocations could not be loaded — some bookings may
+                    be missing. ({allocationsError})
+                  </span>
+                  <Button size="small" color="error" onClick={onRetryAllocations}>
+                    Retry
+                  </Button>
+                </Box>
+              )}
               <Tooltip title="Change contractor order">
                 <IconButton onClick={openOrderModal} size="small">
                   <SettingsIcon />
